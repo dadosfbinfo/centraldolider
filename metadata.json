@@ -1,0 +1,6 @@
+{
+  "name": "Central do Líder",
+  "description": "Plataforma de gestão operacional e governança para líderes e administradores: tarefas/OS, metas, relatórios, calendário e comunicação.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

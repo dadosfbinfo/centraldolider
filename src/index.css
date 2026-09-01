@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #C76B4A;
+  --color-brand-primary-hover: #b55d3d;
+  --color-brand-primary-soft: #fcf1ec;
+  --color-brand-primary-border: #f2caba;
+  
+  --color-brand-charcoal: #343A40;
+  --color-brand-charcoal-hover: #2b3035;
+  --color-brand-charcoal-light: #495057;
+  --color-brand-charcoal-muted: #6c757d;
+
+  --color-brand-petrol: #355C7D;
+  --color-brand-petrol-hover: #2c4c67;
+  --color-brand-petrol-soft: #ebf3f8;
+
+  --color-brand-steel: #5B7DBE;
+  --color-brand-steel-hover: #4a6aa7;
+  --color-brand-steel-soft: #edf3fc;
+
+  --color-brand-bronze: #8B6B4A;
+  --color-brand-bronze-soft: #f7f2ed;
+
+  --color-brand-berry: #B85C7A;
+  --color-brand-berry-hover: #a14e69;
+  --color-brand-berry-soft: #fdf0f4;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  --color-primary: #C76B4A;
+  --color-dark: #343A40;
+  --color-deep-blue: #355C7D;
+  --color-info-blue: #5B7DBE;
+  --color-muted-brown: #8B6B4A;
+  --color-accent-pink: #B85C7A;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #FFFFFF;
+  color: #343A40;
+}
+
+/* Natural Tones Theme Specific Classes */
+.sidebar-item {
+  transition: all 0.2s ease;
+  border-left: 4px solid transparent;
+}
+
+.sidebar-item.active {
+  background-color: rgba(199, 107, 74, 0.1);
+  border-left-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.stat-card {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid #f0f0f0;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f8f9fa;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4d8dd;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}
+
+
