@@ -64,24 +64,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const found = users.find((u) => u.id === savedUserId);
       if (found && found.status_confirmacao === 'CONFIRMADO') {
         setCurrentUser(found);
-      } else if (found && found.status_confirmacao === 'PENDENTE') {
-        // User is pending confirmation, do not auto-login
+      } else {
         localStorage.removeItem(CURRENT_USER_SESSION_KEY);
         setCurrentUser(null);
-      } else {
-        // Fallback if saved user no longer exists
-        const defaultUser = users.find((u) => u.status_confirmacao === 'CONFIRMADO') || users[0] || null;
-        if (defaultUser) {
-          localStorage.setItem(CURRENT_USER_SESSION_KEY, defaultUser.id);
-          setCurrentUser(defaultUser);
-        }
       }
-    } else if (users.length > 0) {
-      const defaultUser = users.find((u) => u.status_confirmacao === 'CONFIRMADO') || users[0];
-      if (defaultUser) {
-        localStorage.setItem(CURRENT_USER_SESSION_KEY, defaultUser.id);
-        setCurrentUser(defaultUser);
-      }
+    } else {
+      setCurrentUser(null);
     }
   }, []);
 
