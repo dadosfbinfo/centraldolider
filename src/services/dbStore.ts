@@ -2,17 +2,21 @@ import {
   UsuarioPerfil,
   Lider,
   Unidade,
+  Projeto,
   Categoria,
   TarefaOS,
+  TaskStatus,
   Meta,
   Relatorio,
   CalendarioEvento,
+  TipoEventoConfig,
   Comentario,
   Notificacao,
   SimulatedEmail,
   UserRole,
   ConfirmationStatus,
-  EvidenciaSubmetida
+  EvidenciaSubmetida,
+  AprovacaoValidador,
 } from '../types/database';
 
 const STORAGE_KEYS = {
@@ -24,6 +28,7 @@ const STORAGE_KEYS = {
   GOALS: 'cdl_metas_v3',
   REPORTS: 'cdl_relatorios_v3',
   EVENTS: 'cdl_calendario_eventos_v1',
+  CALENDAR_TYPES: 'cdl_calendar_types_v1',
   COMMENTS: 'cdl_comentarios_v1',
   NOTIFICATIONS: 'cdl_notificacoes_v1',
   SIMULATED_EMAILS: 'cdl_simulated_emails_v1',
@@ -102,6 +107,34 @@ const INITIAL_USERS: UsuarioPerfil[] = [
     updated_at: '2026-08-15T11:00:00Z',
   },
   {
+    id: 'user-gerencia-01',
+    email: 'gerencia.teste@centraldolider.com.br',
+    nome: 'Gerência Teste',
+    role: 'GERENCIA',
+    status_confirmacao: 'CONFIRMADO',
+    cargo: 'Gerente Regional de Operações',
+    telefone: '(11) 98888-7777',
+    avatar_url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+    created_at: '2026-08-20T08:00:00Z',
+    updated_at: '2026-08-20T08:00:00Z',
+  },
+  {
+    id: 'user-lider-teste',
+    email: 'lider.teste@centraldolider.com.br',
+    nome: 'Líder Teste',
+    role: 'LIDER',
+    status_confirmacao: 'CONFIRMADO',
+    unidade_id: 'unit-pr-01',
+    unidade_nome: 'Unidade Curitiba - Batel',
+    projeto_id: 'unit-pr-01',
+    projeto_nome: 'Unidade Curitiba - Batel',
+    cargo: 'Líder Operacional Curitiba',
+    telefone: '(41) 99999-1122',
+    avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+    created_at: '2026-08-25T08:00:00Z',
+    updated_at: '2026-08-25T08:00:00Z',
+  },
+  {
     id: 'user-pending-01',
     email: 'juliana.oliveira@centraldolider.com.br',
     nome: 'Juliana Oliveira (Pendente)',
@@ -119,9 +152,11 @@ const INITIAL_USERS: UsuarioPerfil[] = [
 
 const INITIAL_PASSWORDS: Record<string, string> = {
   'admin@centraldolider.com.br': 'Admin@123',
+  'gerencia.teste@centraldolider.com.br': 'Gerencia@123',
   'mariana.costa@centraldolider.com.br': 'Lider@123',
   'roberto.almeida@centraldolider.com.br': 'Lider@123',
   'fernanda.lima@centraldolider.com.br': 'Lider@123',
+  'lider.teste@centraldolider.com.br': 'Lider@123',
   'juliana.oliveira@centraldolider.com.br': 'Lider@123',
 };
 
@@ -134,6 +169,9 @@ const INITIAL_LEADERS: Lider[] = [
     matricula: 'MAT-9941',
     cargo: 'Gerente de Unidade',
     unidade: 'Unidade São Paulo - Matriz Pinheiros',
+    unidade_id: 'unit-sp-01',
+    projeto: 'Unidade São Paulo - Matriz Pinheiros',
+    projeto_id: 'unit-sp-01',
     regional: 'Sudeste 1',
     gestor: 'Carlos Eduardo Ramos',
     status: 'ATIVO',
@@ -149,6 +187,9 @@ const INITIAL_LEADERS: Lider[] = [
     matricula: 'MAT-8812',
     cargo: 'Supervisor Operacional',
     unidade: 'Unidade Rio de Janeiro - Barra da Tijuca',
+    unidade_id: 'unit-rj-01',
+    projeto: 'Unidade Rio de Janeiro - Barra da Tijuca',
+    projeto_id: 'unit-rj-01',
     regional: 'Sudeste 2',
     gestor: 'Carlos Eduardo Ramos',
     status: 'ATIVO',
@@ -164,13 +205,43 @@ const INITIAL_LEADERS: Lider[] = [
     matricula: 'MAT-7733',
     cargo: 'Líder de Turno',
     unidade: 'Unidade Belo Horizonte - Savassi',
+    unidade_id: 'unit-mg-01',
+    projeto: 'Unidade Belo Horizonte - Savassi',
+    projeto_id: 'unit-mg-01',
     regional: 'Minas/Centro',
     gestor: 'Carlos Eduardo Ramos',
     status: 'ATIVO',
     telefone: '(31) 99123-4567',
     created_at: '2026-08-15T11:00:00Z',
     updated_at: '2026-08-15T11:00:00Z',
+  },
+  {
+    id: 'lider-teste',
+    usuario_id: 'user-lider-teste',
+    nome: 'Líder Teste',
+    email: 'lider.teste@centraldolider.com.br',
+    matricula: 'MAT-9900',
+    cargo: 'Líder Operacional Curitiba',
+    unidade: 'Unidade Curitiba - Batel',
+    unidade_id: 'unit-pr-01',
+    projeto: 'Unidade Curitiba - Batel',
+    projeto_id: 'unit-pr-01',
+    regional: 'Sul',
+    gestor: 'Carlos Eduardo Ramos',
+    status: 'ATIVO',
+    telefone: '(41) 99999-1122',
+    created_at: '2026-08-25T08:00:00Z',
+    updated_at: '2026-08-25T08:00:00Z',
   }
+];
+
+const INITIAL_CALENDAR_TYPES: TipoEventoConfig[] = [
+  { id: 'REUNIAO', nome: 'Reunião de Alinhamento', cor: '#2E7D32', descricao: 'Reuniões de alinhamento com a liderança', is_default: true },
+  { id: 'TREINAMENTO', nome: 'Treinamento & Capacitação', cor: '#7C3AED', descricao: 'Workshops, cursos e integração de equipes', is_default: true },
+  { id: 'AUDITORIA', nome: 'Auditoria / Inspeção', cor: '#355C7D', descricao: 'Auditorias operacionais e de conformidade', is_default: true },
+  { id: 'VISITA_TECNICA', nome: 'Visita Técnica', cor: '#0D9488', descricao: 'Vistorias e acompanhamentos presenciais', is_default: true },
+  { id: 'COMUNICADO', nome: 'Comunicado Operacional', cor: '#C76B4A', descricao: 'Avisos e comunicados gerais de gestão', is_default: true },
+  { id: 'EVENTO', nome: 'Evento Geral', cor: '#D97706', descricao: 'Eventos corporativos e gerais', is_default: true },
 ];
 
 const INITIAL_TASKS: TarefaOS[] = [
@@ -499,6 +570,65 @@ const INITIAL_TASKS: TarefaOS[] = [
     ],
     created_at: '2026-09-01T07:00:00Z',
     updated_at: '2026-09-01T07:00:00Z',
+  },
+  {
+    id: 'os-108',
+    numero_os: 'OS #000157',
+    titulo: 'Sanitização e Desinfecção Periódica do Depósito Central',
+    responsavel_id: 'user-lider-sp',
+    responsavel_nome: 'Mariana Costa',
+    responsavel_cargo: 'Gerente de Unidade',
+    unidade_id: 'unit-sp-01',
+    unidade: 'Unidade São Paulo - Matriz Pinheiros',
+    data: '2026-09-01',
+    horario: '14:00',
+    prazo: '2026-09-01T18:00:00',
+    descricao: 'Sanitização geral das prateleiras, pallets e pisos do estoque seco com solução homologada.',
+    prioridade: 'ALTA',
+    categoria_id: 'cat-qual',
+    categoria_nome: 'Qualidade & Auditoria',
+    categoria_cor: '#355C7D',
+    status: 'AGUARDANDO_VALIDACAO',
+    recorrencia: 'MENSAL',
+    data_inicio: '2026-09-01T14:10:00Z',
+    data_conclusao: '2026-09-01T16:45:00Z',
+    tempo_execucao_minutos: 155,
+    observacoes_conclusao: 'Sanitização concluída em todos os corredores A, B e C. Fotos das áreas limpas registradas.',
+    requisitos_conclusao: [
+      {
+        id: 'req-108-1',
+        tipo: 'CHECKLIST',
+        titulo: 'Checklist de Sanitização do Depósito',
+        obrigatorio: true,
+        checklist_itens: [
+          { id: 's1', texto: 'Varrição e recolhimento de resíduos em todos os corredores', concluido: true },
+          { id: 's2', texto: 'Aplicação de desinfetante hospitalar nas prateleiras inferiores', concluido: true },
+          { id: 's3', texto: 'Verificação de ausência de poças e umidade excessiva', concluido: true }
+        ]
+      },
+      {
+        id: 'req-108-2',
+        tipo: 'FOTO',
+        titulo: 'Registro Fotográfico do Corredor Principal pós-limpeza',
+        obrigatorio: true
+      }
+    ],
+    evidencias: [
+      {
+        requisito_id: 'req-108-1',
+        tipo: 'CHECKLIST',
+        checklist_concluidos: ['s1', 's2', 's3'],
+        data_registro: '2026-09-01T16:40:00Z'
+      },
+      {
+        requisito_id: 'req-108-2',
+        tipo: 'FOTO',
+        foto_url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&auto=format&fit=crop&q=80',
+        data_registro: '2026-09-01T16:44:00Z'
+      }
+    ],
+    created_at: '2026-09-01T07:00:00Z',
+    updated_at: '2026-09-01T16:45:00Z'
   }
 ];
 
@@ -878,7 +1008,8 @@ No mês de Agosto de 2026, a rede atingiu **97.8% de conformidade operacional**,
     periodo: 'Semana 35 (25/08 a 31/08)',
     data_publicacao: '2026-08-31',
     publicado: true,
-    publico_tipo: 'TODOS',
+    publico_tipo: 'UNIDADES',
+    unidades_alvo: ['unit-sp-01'],
     descricao: 'Balanço semanal de inventários rotativos, conferência de PVPS (Primeiro que Vence, Primeiro que Sai) e laudo de quebras por setor.',
     arquivo_pdf_nome: 'Auditoria_Pereciveis_Semana_35.pdf',
     arquivo_pdf_url: 'https://example.com/relatorios/auditoria-pereciveis-s35.pdf',
@@ -897,6 +1028,30 @@ No mês de Agosto de 2026, a rede atingiu **97.8% de conformidade operacional**,
     leitores_confirmados: [],
     created_at: '2026-08-31T17:00:00Z',
     updated_at: '2026-08-31T17:00:00Z',
+  },
+  {
+    id: 'rel-rj-01',
+    titulo: 'Relatório Operacional Regional - Rio de Janeiro (Semana 35)',
+    tipo: 'SEMANAL',
+    periodo: 'Semana 35 (25/08 a 31/08)',
+    data_publicacao: '2026-08-31',
+    publicado: true,
+    publico_tipo: 'UNIDADES',
+    unidades_alvo: ['unit-rj-01'],
+    descricao: 'Acompanhamento de custos e metas operacionais exclusivas da regional Barra da Tijuca.',
+    arquivo_pdf_nome: 'Relatorio_Operacional_RJ_S35.pdf',
+    arquivo_pdf_url: '#',
+    arquivo_pdf_tamanho: '1.4 MB',
+    arquivo_pdf_conteudo: `# RELATÓRIO OPERACIONAL - REGIONAL RIO DE JANEIRO
+## Unidade Barra da Tijuca
+
+- Cumprimento de metas de produção em 94%.
+- Foco em redução do índice de quebra operacional.`,
+    total_leituras: 0,
+    confirmacoes_leitura: [],
+    leitores_confirmados: [],
+    created_at: '2026-08-31T17:30:00Z',
+    updated_at: '2026-08-31T17:30:00Z',
   },
 
   // 4. Relatório Diário
@@ -1029,6 +1184,25 @@ const INITIAL_EVENTS: CalendarioEvento[] = [
     criado_por_nome: 'Carlos Eduardo Ramos (Admin)',
     status: 'AGENDADO',
     created_at: '2026-09-01T07:00:00Z',
+  },
+  {
+    id: 'evt-rj-01',
+    titulo: 'Vistoria Predial & Alinhamento de Escala - Regional RJ',
+    tipo: 'EVENTO',
+    data: '2026-09-06',
+    horario_inicio: '10:00',
+    horario_fim: '12:00',
+    publico_tipo: 'UNIDADES',
+    unidades_alvo: ['unit-rj-01'],
+    unidade_id: 'unit-rj-01',
+    unidade_nome: 'Unidade Rio de Janeiro - Barra da Tijuca',
+    lider_id: 'user-lider-rj',
+    lider_nome: 'Roberto Almeida',
+    descricao: 'Acompanhamento do cronograma de manutenções e calibração de balanças na Barra da Tijuca.',
+    local: 'Unidade Barra da Tijuca - RJ',
+    criado_por_nome: 'Carlos Eduardo Ramos (Admin)',
+    status: 'AGENDADO',
+    created_at: '2026-09-01T08:00:00Z',
   }
 ];
 
@@ -1162,6 +1336,44 @@ class DatabaseStore {
       if (!localStorage.getItem(STORAGE_KEYS.COMMENTS)) {
         localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
       }
+      if (!localStorage.getItem(STORAGE_KEYS.CALENDAR_TYPES)) {
+        localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
+      }
+
+      // Sync test users & passwords if missing
+      const currentUsers = this.getUsers();
+      let usersChanged = false;
+      INITIAL_USERS.forEach((u) => {
+        if (!currentUsers.some((eu) => eu.id === u.id || eu.email.toLowerCase() === u.email.toLowerCase())) {
+          currentUsers.push(u);
+          usersChanged = true;
+        }
+      });
+      if (usersChanged) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(currentUsers));
+      }
+
+      const passwords = JSON.parse(localStorage.getItem(STORAGE_KEYS.PASSWORDS) || '{}');
+      let passChanged = false;
+      Object.entries(INITIAL_PASSWORDS).forEach(([email, pwd]) => {
+        if (!passwords[email]) {
+          passwords[email] = pwd;
+          passChanged = true;
+        }
+      });
+      if (passChanged) {
+        localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
+      }
+
+      // Sync os-108 if missing
+      const currentTasks = this.getTasks();
+      if (!currentTasks.some((t) => t.id === 'os-108')) {
+        const init108 = INITIAL_TASKS.find((t) => t.id === 'os-108');
+        if (init108) {
+          currentTasks.push(init108);
+          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(currentTasks));
+        }
+      }
     }
   }
 
@@ -1186,6 +1398,7 @@ class DatabaseStore {
     localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(INITIAL_GOALS));
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(INITIAL_REPORTS));
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(INITIAL_EVENTS));
+    localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
     localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
     localStorage.setItem(STORAGE_KEYS.SIMULATED_EMAILS, JSON.stringify(INITIAL_SIMULATED_EMAILS));
@@ -1583,10 +1796,14 @@ class DatabaseStore {
     this.emitChange();
   }
 
-  // --- UNITS ---
+  // --- UNITS / PROJECTS ---
   public getUnits(): Unidade[] {
     const data = localStorage.getItem(STORAGE_KEYS.UNITS);
     return data ? JSON.parse(data) : [];
+  }
+
+  public getProjects(): Projeto[] {
+    return this.getUnits();
   }
 
   public createUnit(unit: Omit<Unidade, 'id' | 'created_at'>): Unidade {
@@ -1602,6 +1819,10 @@ class DatabaseStore {
     return newUnit;
   }
 
+  public createProject(project: Omit<Projeto, 'id' | 'created_at'>): Projeto {
+    return this.createUnit(project as any) as Projeto;
+  }
+
   public updateUnit(id: string, data: Partial<Unidade>): Unidade {
     const units = this.getUnits();
     const idx = units.findIndex((u) => u.id === id);
@@ -1612,10 +1833,18 @@ class DatabaseStore {
     return units[idx];
   }
 
+  public updateProject(id: string, data: Partial<Projeto>): Projeto {
+    return this.updateUnit(id, data as any) as Projeto;
+  }
+
   public deleteUnit(id: string): void {
     const units = this.getUnits().filter((u) => u.id !== id);
     localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(units));
     this.emitChange();
+  }
+
+  public deleteProject(id: string): void {
+    this.deleteUnit(id);
   }
 
   // --- CATEGORIES ---
@@ -1680,10 +1909,130 @@ class DatabaseStore {
     return updatedTasks;
   }
 
-  public getTasksForUser(userId: string, userRole: UserRole): TarefaOS[] {
+  // Helper: Get project IDs assigned to a leader user
+  public getLeaderProjectIds(userId: string): Set<string> {
+    const projectIds = new Set<string>();
+    const user = this.getUserById(userId);
+    if (user?.unidade_id) projectIds.add(user.unidade_id);
+    if (user?.projeto_id) projectIds.add(user.projeto_id);
+
+    const leaders = this.getLeaders();
+    const leaderRecord = leaders.find(
+      (l) => l.usuario_id === userId || l.id === userId || (user?.email && l.email?.toLowerCase() === user?.email?.toLowerCase())
+    );
+
+    if (leaderRecord) {
+      if (leaderRecord.unidade_id) projectIds.add(leaderRecord.unidade_id);
+      if (leaderRecord.projeto_id) projectIds.add(leaderRecord.projeto_id);
+      if (leaderRecord.projetos_ids) {
+        leaderRecord.projetos_ids.forEach((p) => {
+          if (p) projectIds.add(p);
+        });
+      }
+    }
+
+    const units = this.getUnits();
+    units.forEach((u: any) => {
+      if (user?.email && u.responsavel_email?.toLowerCase() === user.email.toLowerCase()) {
+        projectIds.add(u.id);
+      }
+      if (leaderRecord?.email && u.responsavel_email?.toLowerCase() === leaderRecord.email.toLowerCase()) {
+        projectIds.add(u.id);
+      }
+    });
+
+    return projectIds;
+  }
+
+  // Helper: Get leader IDs managed by a GERÊNCIA user
+  public getManagedLeaderIds(gerenciaUserId: string): Set<string> {
+    const leaderIds = new Set<string>();
+    const leaders = this.getLeaders();
+    const managedLeaders = leaders.filter((l) => {
+      if (l.gestores_imediatos_ids && l.gestores_imediatos_ids.includes(gerenciaUserId)) {
+        return true;
+      }
+      if ((l as any).gestor_imediato_id && (l as any).gestor_imediato_id === gerenciaUserId) {
+        return true;
+      }
+      return false;
+    });
+
+    managedLeaders.forEach((l) => {
+      if (l.id) leaderIds.add(l.id);
+      if (l.usuario_id) leaderIds.add(l.usuario_id);
+    });
+
+    return leaderIds;
+  }
+
+  // Helper: Get project IDs of leaders managed by a GERÊNCIA user
+  public getManagedProjectIds(gerenciaUserId: string): Set<string> {
+    const projectIds = new Set<string>();
+    const leaders = this.getLeaders();
+    const managedLeaders = leaders.filter((l) => {
+      if (l.gestores_imediatos_ids && l.gestores_imediatos_ids.includes(gerenciaUserId)) {
+        return true;
+      }
+      if ((l as any).gestor_imediato_id && (l as any).gestor_imediato_id === gerenciaUserId) {
+        return true;
+      }
+      return false;
+    });
+
+    managedLeaders.forEach((l) => {
+      if (l.unidade_id) projectIds.add(l.unidade_id);
+      if (l.projeto_id) projectIds.add(l.projeto_id);
+      if (l.projetos_ids) {
+        l.projetos_ids.forEach((p) => {
+          if (p) projectIds.add(p);
+        });
+      }
+    });
+
+    return projectIds;
+  }
+
+  public getTasksForUser(userId: string, userRole: UserRole, userUnidadeId?: string): TarefaOS[] {
     const all = this.getTasks();
     if (userRole === 'ADMINISTRADOR') return all;
-    return all.filter((t) => t.responsavel_id === userId);
+
+    if (userRole === 'GERENCIA') {
+      const managedLeaderIds = this.getManagedLeaderIds(userId);
+      if (managedLeaderIds.size === 0) return [];
+
+      return all.filter((t) => {
+        // Direct assignee is a managed leader
+        if (t.responsavel_id && managedLeaderIds.has(t.responsavel_id)) return true;
+        // List of leaders includes a managed leader
+        if (t.lideres_ids && t.lideres_ids.some((id) => managedLeaderIds.has(id))) return true;
+        return false;
+      });
+    }
+
+    // LÍDER: only tasks for their assigned projects / themselves
+    const leaderProjectIds = this.getLeaderProjectIds(userId);
+    if (userUnidadeId) leaderProjectIds.add(userUnidadeId);
+
+    const leaderRecord = this.getLeaders().find(
+      (l) => l.usuario_id === userId || l.id === userId
+    );
+    const leaderIds = new Set([userId, leaderRecord?.id, leaderRecord?.usuario_id].filter(Boolean) as string[]);
+
+    return all.filter((t) => {
+      // 1. Direct assignee match
+      const hasSpecificLeader = Boolean(t.responsavel_id || (t.lideres_ids && t.lideres_ids.length > 0));
+      if (hasSpecificLeader) {
+        if (t.responsavel_id && leaderIds.has(t.responsavel_id)) return true;
+        if (t.lideres_ids && t.lideres_ids.some((id) => leaderIds.has(id))) return true;
+        return false;
+      }
+      // 2. Project match (only when no specific leader is assigned)
+      if (t.unidade_id && leaderProjectIds.has(t.unidade_id)) return true;
+      if (t.projeto_id && leaderProjectIds.has(t.projeto_id)) return true;
+      if (t.projetos_ids && t.projetos_ids.some((p) => leaderProjectIds.has(p))) return true;
+      return false;
+    });
   }
 
   public generateNextOsNumber(): string {
@@ -1868,7 +2217,9 @@ class DatabaseStore {
       evidencias: EvidenciaSubmetida[];
       observacoes_conclusao?: string;
       tempo_execucao_minutos?: number;
-    }
+    },
+    executorRole?: UserRole,
+    executorInfo?: { id: string; nome: string }
   ): TarefaOS {
     const tasks = this.getTasks();
     const idx = tasks.findIndex((t) => t.id === id);
@@ -1877,34 +2228,255 @@ class DatabaseStore {
     const task = tasks[idx];
     const now = new Date().toISOString();
 
+    const isManagerOrAdmin = executorRole === 'ADMINISTRADOR' || executorRole === 'GERENCIA';
+    const newStatus: TaskStatus = isManagerOrAdmin ? 'CONCLUIDA' : 'AGUARDANDO_VALIDACAO';
+
     const updatedTask: TarefaOS = {
       ...task,
-      status: 'CONCLUIDA',
+      status: newStatus,
       evidencias: params.evidencias,
       observacoes_conclusao: params.observacoes_conclusao,
       tempo_execucao_minutos: params.tempo_execucao_minutos || 30,
       data_conclusao: now,
+      motivo_recusa: undefined,
+      recusado_por_id: undefined,
+      recusado_por_nome: undefined,
+      data_recusa: undefined,
+      updated_at: now,
+    };
+
+    if (isManagerOrAdmin && executorInfo) {
+      updatedTask.validado_por_id = executorInfo.id;
+      updatedTask.validado_por_nome = executorInfo.nome;
+      updatedTask.validado_por_role = executorRole;
+      updatedTask.data_validacao = now;
+    }
+
+    tasks[idx] = updatedTask;
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+
+    if (newStatus === 'AGUARDANDO_VALIDACAO') {
+      // Notify GERENCIA and ADMINISTRADOR
+      const validators = this.getUsers().filter(
+        (u) => u.role === 'ADMINISTRADOR' || u.role === 'GERENCIA'
+      );
+      validators.forEach((val) => {
+        this.addNotification({
+          usuario_id: val.id,
+          tipo: 'OS_AGUARDANDO_VALIDACAO',
+          titulo: `⏳ OS Aguardando Validação: ${updatedTask.numero_os}`,
+          texto: `${updatedTask.responsavel_nome} concluiu "${updatedTask.titulo}" (${updatedTask.unidade}) e aguarda sua validação.`,
+          lida: false,
+          item_tipo: 'TAREFA',
+          item_id: updatedTask.id,
+          link_acao: 'admin-tarefas',
+        });
+      });
+    } else {
+      // Notify admins
+      const admins = this.getUsers().filter((u) => u.role === 'ADMINISTRADOR');
+      admins.forEach((admin) => {
+        this.addNotification({
+          usuario_id: admin.id,
+          tipo: 'OS_CONCLUIDA',
+          titulo: `✅ OS Concluída: ${updatedTask.numero_os}`,
+          texto: `${updatedTask.responsavel_nome} concluiu "${updatedTask.titulo}" na ${updatedTask.unidade}.`,
+          lida: false,
+        });
+      });
+
+      // Check if task has recurrence and generate the next occurrence if needed
+      if (updatedTask.recorrencia && updatedTask.recorrencia !== 'UMA_VEZ') {
+        this.generateNextRecurrentTask(updatedTask);
+      }
+    }
+
+    this.emitChange();
+    return updatedTask;
+  }
+
+  public approveTaskValidation(
+    taskId: string,
+    validator: { id: string; nome: string; role: UserRole }
+  ): TarefaOS {
+    const tasks = this.getTasks();
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1) throw new Error('OS não encontrada.');
+
+    const task = tasks[idx];
+
+    // Check validator selection rule: must be one of the designated validators if specified
+    if (task.validadores_ids && task.validadores_ids.length > 0) {
+      if (!task.validadores_ids.includes(validator.id)) {
+        throw new Error('Apenas os usuários designados como Validadores da OS durante a criação podem realizar esta validação.');
+      }
+    }
+
+    // Check GERÊNCIA Gestor Imediato rule: GERÊNCIA can only validate OS for leaders they manage
+    if (validator.role === 'GERENCIA') {
+      const leaders = this.getLeaders();
+      const leader = leaders.find((l) => l.usuario_id === task.responsavel_id || l.id === task.responsavel_id);
+      if (leader) {
+        if (!leader.gestores_imediatos_ids || !leader.gestores_imediatos_ids.includes(validator.id)) {
+          throw new Error('Usuários com perfil GERÊNCIA só podem validar OS dos Líderes sob sua gestão direta (Gestor Imediato).');
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    const currentApprovals: AprovacaoValidador[] = task.validacoes_aprovadas ? [...task.validacoes_aprovadas] : [];
+
+    // Check if this validator has already approved
+    if (currentApprovals.some((a) => a.validador_id === validator.id)) {
+      throw new Error('Você já registrou a sua aprovação para esta Ordem de Serviço.');
+    }
+
+    // Record this validator's approval
+    currentApprovals.push({
+      validador_id: validator.id,
+      validador_nome: validator.nome,
+      validador_role: validator.role,
+      data_validacao: now,
+    });
+
+    // Determine required validators
+    const requiredValidatorIds = (task.validadores_ids && task.validadores_ids.length > 0)
+      ? task.validadores_ids
+      : [validator.id];
+
+    // All designated validators must approve before the OS is fully validated/concluded
+    const allApproved = requiredValidatorIds.every((vId) =>
+      currentApprovals.some((a) => a.validador_id === vId)
+    );
+
+    let updatedTask: TarefaOS;
+
+    if (allApproved) {
+      // 100% of validators approved: Mark as CONCLUIDA
+      updatedTask = {
+        ...task,
+        status: 'CONCLUIDA',
+        validacoes_aprovadas: currentApprovals,
+        validado_por_id: validator.id,
+        validado_por_nome: currentApprovals.map((a) => a.validador_nome).join(', '),
+        validado_por_role: validator.role,
+        data_validacao: now,
+        motivo_recusa: undefined,
+        recusado_por_id: undefined,
+        recusado_por_nome: undefined,
+        data_recusa: undefined,
+        updated_at: now,
+      };
+
+      // Notify the Leader that OS is fully approved and completed
+      if (task.responsavel_id) {
+        this.addNotification({
+          usuario_id: task.responsavel_id,
+          tipo: 'OS_APROVADA',
+          titulo: `✅ OS Totalmente Concluída e Validada: ${task.numero_os}`,
+          texto: `A OS "${task.titulo}" foi aprovada por todos os validadores (${updatedTask.validado_por_nome}).`,
+          lida: false,
+          item_tipo: 'TAREFA',
+          item_id: task.id,
+          link_acao: 'minhas-tarefas',
+        });
+      }
+
+      if (updatedTask.recorrencia && updatedTask.recorrencia !== 'UMA_VEZ') {
+        this.generateNextRecurrentTask(updatedTask);
+      }
+    } else {
+      // Partial approval: Remains in AGUARDANDO_VALIDACAO until ALL other validators approve
+      const pendingIds = requiredValidatorIds.filter(
+        (vId) => !currentApprovals.some((a) => a.validador_id === vId)
+      );
+      const pendingUsers = this.getUsers().filter((u) => pendingIds.includes(u.id));
+
+      updatedTask = {
+        ...task,
+        status: 'AGUARDANDO_VALIDACAO',
+        validacoes_aprovadas: currentApprovals,
+        updated_at: now,
+      };
+
+      // Notify remaining pending validators
+      pendingUsers.forEach((u) => {
+        this.addNotification({
+          usuario_id: u.id,
+          tipo: 'OS_AGUARDANDO_VALIDACAO',
+          titulo: `⏳ Validação Pendente: ${task.numero_os}`,
+          texto: `${validator.nome} já aprovou a OS "${task.titulo}". Sua validação ainda é necessária para a conclusão.`,
+          lida: false,
+          item_tipo: 'TAREFA',
+          item_id: task.id,
+          link_acao: 'admin-tarefas',
+        });
+      });
+    }
+
+    tasks[idx] = updatedTask;
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+    this.emitChange();
+    return updatedTask;
+  }
+
+  public rejectTaskValidation(
+    taskId: string,
+    validator: { id: string; nome: string; role: UserRole },
+    motivo: string
+  ): TarefaOS {
+    const tasks = this.getTasks();
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1) throw new Error('OS não encontrada.');
+
+    const task = tasks[idx];
+
+    // Check validator selection rule
+    if (task.validadores_ids && task.validadores_ids.length > 0) {
+      if (!task.validadores_ids.includes(validator.id)) {
+        throw new Error('Apenas os usuários designados como Validadores da OS durante a criação podem realizar esta validação.');
+      }
+    }
+
+    // Check GERÊNCIA Gestor Imediato rule: GERÊNCIA can only validate OS for leaders they manage
+    if (validator.role === 'GERENCIA') {
+      const leaders = this.getLeaders();
+      const leader = leaders.find((l) => l.usuario_id === task.responsavel_id || l.id === task.responsavel_id);
+      if (leader) {
+        if (!leader.gestores_imediatos_ids || !leader.gestores_imediatos_ids.includes(validator.id)) {
+          throw new Error('Usuários com perfil GERÊNCIA só podem validar OS dos Líderes sob sua gestão direta (Gestor Imediato).');
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    const updatedTask: TarefaOS = {
+      ...task,
+      status: 'EM_ANDAMENTO',
+      validacoes_aprovadas: [], // Reset previous approvals since the OS was returned for changes
+      motivo_recusa: motivo,
+      recusado_por_id: validator.id,
+      recusado_por_nome: validator.nome,
+      data_recusa: now,
       updated_at: now,
     };
 
     tasks[idx] = updatedTask;
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
 
-    // Notify admins about completion
-    const admins = this.getUsers().filter((u) => u.role === 'ADMINISTRADOR');
-    admins.forEach((admin) => {
+    // Notify the Leader
+    if (task.responsavel_id) {
       this.addNotification({
-        usuario_id: admin.id,
-        tipo: 'OS_CONCLUIDA',
-        titulo: `✅ OS Concluída: ${updatedTask.numero_os}`,
-        texto: `${updatedTask.responsavel_nome} concluiu "${updatedTask.titulo}" na ${updatedTask.unidade}.`,
+        usuario_id: task.responsavel_id,
+        tipo: 'OS_RECUSADA',
+        titulo: `⚠️ OS Devolvida para Ajuste: ${task.numero_os}`,
+        texto: `A OS "${task.titulo}" foi devolvida por ${validator.nome} (${validator.role === 'GERENCIA' ? 'Gerência' : 'Administração'}). Motivo: "${motivo}".`,
         lida: false,
+        item_tipo: 'TAREFA',
+        item_id: task.id,
+        link_acao: 'minhas-tarefas',
       });
-    });
-
-    // Check if task has recurrence and generate the next occurrence if needed
-    if (updatedTask.recorrencia && updatedTask.recorrencia !== 'UMA_VEZ') {
-      this.generateNextRecurrentTask(updatedTask);
     }
 
     this.emitChange();
@@ -2032,13 +2604,38 @@ class DatabaseStore {
     const goals = this.getGoals();
     if (userRole === 'ADMINISTRADOR') return goals;
 
+    if (userRole === 'GERENCIA') {
+      const managedLeaderIds = this.getManagedLeaderIds(userId);
+      if (managedLeaderIds.size === 0) return [];
+
+      return goals.filter((g) => {
+        if (g.lider_id && managedLeaderIds.has(g.lider_id)) return true;
+        if (g.lideres_ids && g.lideres_ids.some((id) => managedLeaderIds.has(id))) return true;
+        return false;
+      });
+    }
+
+    // LÍDER: only goals for their assigned projects / themselves
+    const leaderProjectIds = this.getLeaderProjectIds(userId);
+    if (userUnitId) leaderProjectIds.add(userUnitId);
+
+    const leaderRecord = this.getLeaders().find(
+      (l) => l.usuario_id === userId || l.id === userId
+    );
+    const leaderIds = new Set([userId, leaderRecord?.id, leaderRecord?.usuario_id].filter(Boolean) as string[]);
+
     return goals.filter((g) => {
-      // If assigned directly to the leader
-      if (g.lider_id === userId) return true;
-      // If assigned to the leader's unit
-      if (userUnitId && g.unidade_id === userUnitId) return true;
-      // If general goal with no specific leader or unit
-      if (!g.lider_id && !g.unidade_id) return true;
+      // 1. Direct leader match
+      const hasSpecificLeader = Boolean(g.lider_id || (g.lideres_ids && g.lideres_ids.length > 0));
+      if (hasSpecificLeader) {
+        if (g.lider_id && leaderIds.has(g.lider_id)) return true;
+        if (g.lideres_ids && g.lideres_ids.some((id) => leaderIds.has(id))) return true;
+        return false;
+      }
+      // 2. Project match (only when no specific leader is assigned)
+      if (g.unidade_id && leaderProjectIds.has(g.unidade_id)) return true;
+      if (g.projeto_id && leaderProjectIds.has(g.projeto_id)) return true;
+      if (g.projetos_ids && g.projetos_ids.some((id) => leaderProjectIds.has(id))) return true;
       return false;
     });
   }
@@ -2053,7 +2650,7 @@ class DatabaseStore {
     let status: 'EM_ANDAMENTO' | 'ATINGIDA' | 'NAO_ATINGIDA' = data.status || 'EM_ANDAMENTO';
     if (data.meta_valor > 0) {
       if (data.direcao_melhor === 'MENOR_MELHOR') {
-        status = data.valor_atual <= data.meta_valor ? 'ATINGIDA' : 'EM_ANDAMENTO';
+        status = data.valor_atual <= data.meta_valor && data.valor_atual > 0 ? 'ATINGIDA' : 'EM_ANDAMENTO';
       } else {
         status = data.valor_atual >= data.meta_valor ? 'ATINGIDA' : 'EM_ANDAMENTO';
       }
@@ -2100,7 +2697,7 @@ class DatabaseStore {
     // Auto calculate status if values change
     if (updated.meta_valor > 0) {
       if (updated.direcao_melhor === 'MENOR_MELHOR') {
-        updated.status = updated.valor_atual <= updated.meta_valor ? 'ATINGIDA' : 'EM_ANDAMENTO';
+        updated.status = updated.valor_atual <= updated.meta_valor && updated.valor_atual > 0 ? 'ATINGIDA' : 'EM_ANDAMENTO';
       } else {
         updated.status = updated.valor_atual >= updated.meta_valor ? 'ATINGIDA' : 'EM_ANDAMENTO';
       }
@@ -2133,17 +2730,49 @@ class DatabaseStore {
     if (!user) return [];
     if (user.role === 'ADMINISTRADOR') return all;
 
+    if (user.role === 'GERENCIA') {
+      const managedLeaderIds = this.getManagedLeaderIds(user.id);
+      if (managedLeaderIds.size === 0) return [];
+
+      return all.filter((r) => {
+        if (r.lideres_alvo && r.lideres_alvo.some((targetId) => managedLeaderIds.has(targetId))) {
+          return true;
+        }
+        if ((r as any).lider_id && managedLeaderIds.has((r as any).lider_id)) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // LÍDER
+    const leaderProjectIds = this.getLeaderProjectIds(user.id);
+    const leaderRecord = this.getLeaders().find(
+      (l) => l.usuario_id === user.id || l.id === user.id || (user.email && l.email?.toLowerCase() === user.email?.toLowerCase())
+    );
+    const leaderIds = new Set([user.id, leaderRecord?.id, leaderRecord?.usuario_id].filter(Boolean) as string[]);
+
     // Leaders only see published reports that they have access to
     return all.filter((r) => {
       if (!r.publicado) return false;
 
+      // Direct leader check if specific leaders are targeted
+      if (r.lideres_alvo && r.lideres_alvo.length > 0) {
+        return r.lideres_alvo.some((targetId) => leaderIds.has(targetId));
+      }
+      if ((r as any).lider_id) {
+        return leaderIds.has((r as any).lider_id);
+      }
+
       // Access checks
       if (r.publico_tipo === 'TODOS') return true;
-      if (r.publico_tipo === 'UNIDADES' && r.unidades_alvo && user.unidade_id) {
-        return r.unidades_alvo.includes(user.unidade_id);
+      if (r.publico_tipo === 'UNIDADES' || (r.publico_tipo as string) === 'PROJETOS') {
+        if (!r.unidades_alvo || r.unidades_alvo.length === 0) return true;
+        return r.unidades_alvo.some((targetId) => leaderProjectIds.has(targetId));
       }
-      if (r.publico_tipo === 'LIDERES' && r.lideres_alvo) {
-        return r.lideres_alvo.includes(user.id);
+      if (r.publico_tipo === 'LIDERES') {
+        if (!r.lideres_alvo || r.lideres_alvo.length === 0) return true;
+        return r.lideres_alvo.some((targetId) => leaderIds.has(targetId));
       }
       return false;
     });
@@ -2284,6 +2913,41 @@ class DatabaseStore {
     return data ? JSON.parse(data) : [];
   }
 
+  public getEventsForUser(userId: string, userRole: UserRole, userUnidadeId?: string): CalendarioEvento[] {
+    const all = this.getEvents();
+    if (userRole === 'ADMINISTRADOR') return all;
+
+    if (userRole === 'GERENCIA') {
+      const managedLeaderIds = this.getManagedLeaderIds(userId);
+      if (managedLeaderIds.size === 0) return [];
+
+      return all.filter((e) => {
+        if (e.lider_id && managedLeaderIds.has(e.lider_id)) return true;
+        if (e.lideres_alvo && e.lideres_alvo.some((id) => managedLeaderIds.has(id))) return true;
+        return false;
+      });
+    }
+
+    // LÍDER
+    const leaderProjectIds = this.getLeaderProjectIds(userId);
+    if (userUnidadeId) leaderProjectIds.add(userUnidadeId);
+
+    const leaderRecord = this.getLeaders().find(
+      (l) => l.usuario_id === userId || l.id === userId
+    );
+    const leaderIds = new Set([userId, leaderRecord?.id, leaderRecord?.usuario_id].filter(Boolean) as string[]);
+
+    return all.filter((e) => {
+      if (!e.publico_tipo || e.publico_tipo === 'TODOS') return true;
+      if (e.lider_id && leaderIds.has(e.lider_id)) return true;
+      if (e.lideres_alvo && e.lideres_alvo.some((id) => leaderIds.has(id))) return true;
+      if (e.unidade_id && leaderProjectIds.has(e.unidade_id)) return true;
+      if (e.unidades_alvo && e.unidades_alvo.some((id) => leaderProjectIds.has(id))) return true;
+      if (e.projeto_id && leaderProjectIds.has(e.projeto_id)) return true;
+      return false;
+    });
+  }
+
   public getEventById(id: string): CalendarioEvento | undefined {
     return this.getEvents().find((e) => e.id === id);
   }
@@ -2352,6 +3016,91 @@ class DatabaseStore {
   public deleteEvent(id: string): void {
     const events = this.getEvents().filter((e) => e.id !== id);
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+    this.emitChange();
+  }
+
+  // --- CALENDAR EVENT TYPES (CONFIGURAÇÃO DE TIPOS) ---
+  public getCalendarTypes(): TipoEventoConfig[] {
+    const data = localStorage.getItem(STORAGE_KEYS.CALENDAR_TYPES);
+    if (data === null) {
+      localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
+      return INITIAL_CALENDAR_TYPES;
+    }
+    try {
+      const types: TipoEventoConfig[] = JSON.parse(data);
+      if (Array.isArray(types) && types.length > 0) {
+        return types;
+      }
+      return INITIAL_CALENDAR_TYPES;
+    } catch {
+      return INITIAL_CALENDAR_TYPES;
+    }
+  }
+
+  public createCalendarType(data: Omit<TipoEventoConfig, 'id'>): TipoEventoConfig {
+    const types = this.getCalendarTypes();
+    const id = data.nome
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]/g, '_') + '_' + Date.now().toString(36);
+
+    const newType: TipoEventoConfig = {
+      ...data,
+      id,
+      is_default: false,
+    };
+    types.push(newType);
+    localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(types));
+    this.emitChange();
+    return newType;
+  }
+
+  public updateCalendarType(id: string, data: Partial<TipoEventoConfig>): TipoEventoConfig {
+    const types = this.getCalendarTypes();
+    const idx = types.findIndex((t) => t.id === id);
+    if (idx === -1) throw new Error('Tipo de evento não encontrado.');
+
+    types[idx] = { ...types[idx], ...data };
+    localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(types));
+    this.emitChange();
+    return types[idx];
+  }
+
+  public deleteCalendarType(id: string): void {
+    const currentTypes = this.getCalendarTypes();
+    const filtered = currentTypes.filter((t) => t.id !== id);
+    
+    if (filtered.length === 0) {
+      // Ensure at least one active fallback type remains
+      const fallback: TipoEventoConfig = {
+        id: 'GERAL',
+        nome: 'Geral',
+        cor: '#355C7D',
+        descricao: 'Eventos e compromissos gerais',
+        is_default: true,
+      };
+      localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify([fallback]));
+    } else {
+      localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(filtered));
+    }
+
+    // Reassign existing events associated with deleted type to remaining fallback type
+    const remainingTypes = this.getCalendarTypes();
+    const fallbackTypeId = remainingTypes[0]?.id || 'GERAL';
+    const events = this.getEvents();
+    let updatedEvents = false;
+    events.forEach((e) => {
+      if (e.tipo === id) {
+        e.tipo = fallbackTypeId;
+        updatedEvents = true;
+      }
+    });
+    if (updatedEvents) {
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+    }
+
     this.emitChange();
   }
 
@@ -2472,7 +3221,7 @@ class DatabaseStore {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
     const notifs: Notificacao[] = data ? JSON.parse(data) : [];
     if (userId) {
-      return notifs.filter((n) => n.usuario_id === userId);
+      return notifs.filter((n) => !n.usuario_id || n.usuario_id === userId || n.usuario_id === 'ALL');
     }
     return notifs;
   }
@@ -2499,10 +3248,12 @@ class DatabaseStore {
     }
   }
 
-  public markAllNotificationsRead(userId: string): void {
+  public markAllNotificationsRead(userId?: string): void {
     const notifs = this.getNotifications();
     notifs.forEach((n) => {
-      if (n.usuario_id === userId) n.lida = true;
+      if (!userId || n.usuario_id === userId || n.usuario_id === 'ALL') {
+        n.lida = true;
+      }
     });
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs));
     this.emitChange();

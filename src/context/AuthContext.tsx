@@ -11,6 +11,7 @@ export type NavigationTab =
   | 'meu-perfil'
   | 'admin-usuarios'
   | 'admin-lideres'
+  | 'admin-projetos'
   | 'admin-tarefas'
   | 'admin-metas'
   | 'admin-relatorios'
@@ -18,6 +19,7 @@ export type NavigationTab =
 
 interface AuthContextType {
   currentUser: UsuarioPerfil | null;
+  user: UsuarioPerfil | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   activeTab: NavigationTab;
@@ -66,6 +68,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // User is pending confirmation, do not auto-login
         localStorage.removeItem(CURRENT_USER_SESSION_KEY);
         setCurrentUser(null);
+      } else {
+        // Fallback if saved user no longer exists
+        const defaultUser = users.find((u) => u.status_confirmacao === 'CONFIRMADO') || users[0] || null;
+        if (defaultUser) {
+          localStorage.setItem(CURRENT_USER_SESSION_KEY, defaultUser.id);
+          setCurrentUser(defaultUser);
+        }
+      }
+    } else if (users.length > 0) {
+      const defaultUser = users.find((u) => u.status_confirmacao === 'CONFIRMADO') || users[0];
+      if (defaultUser) {
+        localStorage.setItem(CURRENT_USER_SESSION_KEY, defaultUser.id);
+        setCurrentUser(defaultUser);
       }
     }
   }, []);
@@ -167,6 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         currentUser,
+        user: currentUser,
         isAuthenticated: !!currentUser,
         isLoading,
         activeTab,

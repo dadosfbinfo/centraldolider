@@ -28,6 +28,7 @@ import { TaskExecutionModal } from './TaskExecutionModal';
 import { TaskBlockModal } from './TaskBlockModal';
 import { TaskPrintModal } from './TaskPrintModal';
 import { TaskFormModal } from './TaskFormModal';
+import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
 
 export const DashboardHome: React.FC = () => {
   const { currentUser, setActiveTab } = useAuth();
@@ -37,6 +38,13 @@ export const DashboardHome: React.FC = () => {
   const [goals, setGoals] = useState<Meta[]>([]);
   const [reports, setReports] = useState<Relatorio[]>([]);
   const [events, setEvents] = useState<CalendarioEvento[]>([]);
+
+  // Period Filter State
+  const [period, setPeriod] = useState<PeriodFilterValue>({
+    mode: 'TODOS',
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  });
 
   // Modals state
   const [isExecModalOpen, setIsExecModalOpen] = useState(false);
@@ -52,10 +60,10 @@ export const DashboardHome: React.FC = () => {
 
   const loadData = () => {
     if (currentUser) {
-      setTasks(dbStore.getTasksForUser(currentUser.id, currentUser.role));
-      setGoals(dbStore.getGoals());
-      setReports(dbStore.getReports());
-      setEvents(dbStore.getEvents());
+      setTasks(dbStore.getTasksForUser(currentUser.id, currentUser.role, currentUser.unidade_id));
+      setGoals(dbStore.getGoalsForUser(currentUser.id, currentUser.role, currentUser.unidade_id));
+      setReports(dbStore.getReportsForUser(currentUser));
+      setEvents(dbStore.getEventsForUser(currentUser.id, currentUser.role, currentUser.unidade_id));
     }
   };
 
@@ -89,15 +97,23 @@ export const DashboardHome: React.FC = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Counters
-  const todayTasks = tasks.filter((t) => t.data === todayStr);
+  // Period filtered tasks
+  const periodTasks = period.mode === 'TODOS'
+    ? tasks
+    : tasks.filter((t) => isDateInPeriod(t.data, period));
+
+  // Counters for the active period/view
+  const todayTasks = period.mode === 'TODOS'
+    ? tasks.filter((t) => t.data === todayStr)
+    : periodTasks;
+
   const todayPending = todayTasks.filter((t) => t.status !== 'CONCLUIDA');
   const todayCompleted = todayTasks.filter((t) => t.status === 'CONCLUIDA');
-  const overdueTasks = tasks.filter((t) => t.status === 'ATRASADA');
-  const blockedTasks = tasks.filter((t) => t.status === 'BLOQUEADA');
+  const overdueTasks = periodTasks.filter((t) => t.status === 'ATRASADA');
+  const blockedTasks = periodTasks.filter((t) => t.status === 'BLOQUEADA');
 
   // SLA calculation
-  const totalCompleted = tasks.filter((t) => t.status === 'CONCLUIDA').length;
+  const totalCompleted = periodTasks.filter((t) => t.status === 'CONCLUIDA').length;
   const totalFinishedOrOverdue = totalCompleted + overdueTasks.length;
   const slaRate = totalFinishedOrOverdue > 0 ? Math.round((totalCompleted / totalFinishedOrOverdue) * 100) : 94;
 
@@ -134,7 +150,7 @@ export const DashboardHome: React.FC = () => {
             <p className="text-sm text-gray-200 max-w-2xl leading-relaxed">
               {isAdmin
                 ? 'Painel de controle geral. Centralize ordens de serviço, auditorias operacionais e rastreabilidade de todas as unidades.'
-                : `Cockpit operacional da ${currentUser?.unidade_nome || 'sua unidade'}. Você tem ${todayPending.length} tarefa(s) programada(s) para hoje.`}
+                : `Cockpit operacional da ${currentUser?.unidade_nome || 'sua unidade'}. Você tem ${todayPending.length} tarefa(s) programada(s) para o período.`}
             </p>
           </div>
 
@@ -158,12 +174,21 @@ export const DashboardHome: React.FC = () => {
         </div>
       </div>
 
+      {/* Period Filter Bar */}
+      <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-900">
+          <Calendar className="w-4 h-4 text-[#C76B4A]" />
+          <span>Filtro de Período do Cockpit:</span>
+        </div>
+        <PeriodFilter value={period} onChange={setPeriod} />
+      </div>
+
       {/* "Seus Números" - Quick Metrics Bar */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-bold text-[#343A40] uppercase tracking-wider flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#C76B4A]" />
-            Seus Números e Indicadores de Hoje
+            {period.mode === 'TODOS' ? 'Seus Números e Indicadores de Hoje' : 'Indicadores do Período Selecionado'}
           </h3>
           <span className="text-[11px] text-gray-400 font-medium">Atualizado em tempo real</span>
         </div>
@@ -469,32 +494,38 @@ export const DashboardHome: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {goals.slice(0, 3).map((g) => {
-                const isSmaller = g.direcao_melhor === 'MENOR_MELHOR';
-                const isReached = isSmaller ? g.valor_atual <= g.meta_valor : g.valor_atual >= g.meta_valor;
-                const percent = isSmaller
-                  ? Math.round((g.meta_valor / Math.max(g.valor_atual, 0.01)) * 100)
-                  : Math.round((g.valor_atual / Math.max(g.meta_valor, 1)) * 100);
+              {goals.length === 0 ? (
+                <p className="text-[11px] text-stone-400 py-2 text-center italic">
+                  Nenhuma meta vinculada para sua unidade.
+                </p>
+              ) : (
+                goals.slice(0, 3).map((g) => {
+                  const isSmaller = g.direcao_melhor === 'MENOR_MELHOR';
+                  const isReached = isSmaller ? g.valor_atual <= g.meta_valor : g.valor_atual >= g.meta_valor;
+                  const percent = isSmaller
+                    ? Math.round((g.meta_valor / Math.max(g.valor_atual, 0.01)) * 100)
+                    : Math.round((g.valor_atual / Math.max(g.meta_valor, 1)) * 100);
 
-                return (
-                  <div key={g.id} className="p-3 rounded-xl bg-stone-50 border border-stone-100 text-xs">
-                    <div className="flex items-center justify-between font-bold text-stone-800">
-                      <span className="truncate max-w-[170px]">{g.indicador}</span>
-                      <span className={isReached ? 'text-emerald-600' : 'text-[#C76B4A]'}>
-                        {g.valor_atual} / {g.meta_valor} {g.unidade_medida}
-                      </span>
+                  return (
+                    <div key={g.id} className="p-3 rounded-xl bg-stone-50 border border-stone-100 text-xs">
+                      <div className="flex items-center justify-between font-bold text-stone-800">
+                        <span className="truncate max-w-[170px]">{g.indicador}</span>
+                        <span className={isReached ? 'text-emerald-600' : 'text-[#C76B4A]'}>
+                          {g.valor_atual} / {g.meta_valor} {g.unidade_medida}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden mt-2">
+                        <div
+                          className={`h-full rounded-full ${
+                            isReached ? 'bg-emerald-500' : percent >= 80 ? 'bg-[#C76B4A]' : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${Math.min(percent, 100)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden mt-2">
-                      <div
-                        className={`h-full rounded-full ${
-                          isReached ? 'bg-emerald-500' : percent >= 80 ? 'bg-[#C76B4A]' : 'bg-rose-500'
-                        }`}
-                        style={{ width: `${Math.min(percent, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -514,38 +545,44 @@ export const DashboardHome: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {reports.slice(0, 2).map((rep) => {
-                const isConfirmed = currentUser
-                  ? rep.confirmacoes_leitura?.some((c) => c.usuario_id === currentUser.id)
-                  : false;
+              {reports.length === 0 ? (
+                <p className="text-[11px] text-stone-400 py-2 text-center italic">
+                  Nenhum relatório disponível para sua unidade.
+                </p>
+              ) : (
+                reports.slice(0, 2).map((rep) => {
+                  const isConfirmed = currentUser
+                    ? rep.confirmacoes_leitura?.some((c) => c.usuario_id === currentUser.id)
+                    : false;
 
-                return (
-                  <div
-                    key={rep.id}
-                    onClick={() => setActiveTab(isAdmin ? 'admin-relatorios' : 'relatorios')}
-                    className="p-3 rounded-xl bg-stone-50 hover:bg-stone-100/80 border border-stone-100 text-xs cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-stone-900 truncate max-w-[190px]">
-                        {rep.titulo}
-                      </span>
-                      {isConfirmed ? (
-                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          Lido
+                  return (
+                    <div
+                      key={rep.id}
+                      onClick={() => setActiveTab(isAdmin ? 'admin-relatorios' : 'relatorios')}
+                      className="p-3 rounded-xl bg-stone-50 hover:bg-stone-100/80 border border-stone-100 text-xs cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-stone-900 truncate max-w-[190px]">
+                          {rep.titulo}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-orange-800 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
-                          Pendente
-                        </span>
-                      )}
+                        {isConfirmed ? (
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            Lido
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-orange-800 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
+                            Pendente
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-1 flex items-center justify-between">
+                        <span>{rep.periodo}</span>
+                        <span>{rep.arquivo_pdf_tamanho}</span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-stone-500 mt-1 flex items-center justify-between">
-                      <span>{rep.periodo}</span>
-                      <span>{rep.arquivo_pdf_tamanho}</span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -565,15 +602,21 @@ export const DashboardHome: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {events.slice(0, 2).map((evt) => (
-                <div key={evt.id} className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs">
-                  <span className="font-bold text-[#343A40] block">{evt.titulo}</span>
-                  <div className="flex items-center gap-2 text-gray-500 mt-1 text-[11px]">
-                    <span>📅 {new Date(evt.data).toLocaleDateString('pt-BR')}</span>
-                    <span>⏰ {evt.horario_inicio}</span>
+              {events.length === 0 ? (
+                <p className="text-[11px] text-stone-400 py-2 text-center italic">
+                  Nenhum compromisso agendado para sua unidade.
+                </p>
+              ) : (
+                events.slice(0, 2).map((evt) => (
+                  <div key={evt.id} className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+                    <span className="font-bold text-[#343A40] block">{evt.titulo}</span>
+                    <div className="flex items-center gap-2 text-gray-500 mt-1 text-[11px]">
+                      <span>📅 {new Date(evt.data).toLocaleDateString('pt-BR')}</span>
+                      <span>⏰ {evt.horario_inicio}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

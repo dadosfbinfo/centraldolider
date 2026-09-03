@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   TrendingUp,
   AlertCircle,
-  Building2,
+  FolderKanban,
   User,
   Calendar,
   X,
@@ -17,49 +17,63 @@ import {
   Sparkles,
   ArrowUpDown,
   Clock,
+  FileSpreadsheet
 } from 'lucide-react';
 import { dbStore } from '../../services/dbStore';
-import { Meta, GoalPeriodicity, GoalDirection, Unidade, UsuarioPerfil } from '../../types/database';
+import { Meta, GoalPeriodicity, GoalDirection, Projeto, UsuarioPerfil } from '../../types/database';
+import { useAuth } from '../../context/AuthContext';
+import { GoalImportModal } from './GoalImportModal';
+import { PeriodFilter, PeriodSelection, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
 
 export const GoalsManagementView: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [goals, setGoals] = useState<Meta[]>([]);
-  const [units, setUnits] = useState<Unidade[]>([]);
+  const [projects, setProjects] = useState<Projeto[]>([]);
   const [leaders, setLeaders] = useState<UsuarioPerfil[]>([]);
 
   // Filter states
   const [selectedPeriodicity, setSelectedPeriodicity] = useState<GoalPeriodicity | 'TODAS'>('TODAS');
-  const [selectedUnitId, setSelectedUnitId] = useState<string>('TODAS');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('TODOS');
   const [selectedLeaderId, setSelectedLeaderId] = useState<string>('TODOS');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [period, setPeriod] = useState<PeriodFilterValue>({
+    mode: 'TODOS',
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  });
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [editingGoal, setEditingGoal] = useState<Meta | null>(null);
-
-  // Quick inline update modal
-  const [quickUpdateGoal, setQuickUpdateGoal] = useState<Meta | null>(null);
-  const [quickRealizedVal, setQuickRealizedVal] = useState<number>(0);
 
   // Form states for Create/Edit
   const [formData, setFormData] = useState({
     indicador: '',
     meta_valor: 100,
-    valor_atual: 0,
     unidade_medida: '%',
     tipo_periodo: 'MENSAL' as GoalPeriodicity,
     periodo: 'Setembro / 2026',
-    data_inicio: '2026-09-01',
-    data_fim: '2026-09-30',
-    unidade_id: '',
-    lider_id: '',
+    data_inicio: new Date().toISOString().split('T')[0],
+    data_fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+    projetos_ids: [] as string[],
     direcao_melhor: 'MAIOR_MELHOR' as GoalDirection,
     descricao: '',
   });
 
   const loadData = () => {
-    setGoals(dbStore.getGoals());
-    setUnits(dbStore.getUnits());
-    setLeaders(dbStore.getUsers().filter((u) => u.role === 'LIDER'));
+    if (currentUser) {
+      setGoals(dbStore.getGoalsForUser(currentUser.id, currentUser.role, currentUser.unidade_id));
+    } else {
+      setGoals(dbStore.getGoals());
+    }
+    setProjects(dbStore.getProjects());
+    let allLeaders = dbStore.getUsers().filter((u) => u.role === 'LIDER');
+    if (currentUser?.role === 'GERENCIA') {
+      const managedLeaderIds = dbStore.getManagedLeaderIds(currentUser.id);
+      allLeaders = allLeaders.filter((l) => managedLeaderIds.has(l.id));
+    }
+    setLeaders(allLeaders);
   };
 
   useEffect(() => {
@@ -68,21 +82,52 @@ export const GoalsManagementView: React.FC = () => {
       loadData();
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
+
+  // Automatically calculate leaders based on selected projects
+  const autoIdentifiedLeaders = useMemo(() => {
+    let allLeaders = dbStore.getLeaders();
+    if (currentUser?.role === 'GERENCIA') {
+      const managedLeaderIds = dbStore.getManagedLeaderIds(currentUser.id);
+      allLeaders = allLeaders.filter((l) => managedLeaderIds.has(l.id) || managedLeaderIds.has(l.usuario_id));
+    }
+    if (!formData.projetos_ids || formData.projetos_ids.length === 0) {
+      return allLeaders;
+    }
+    return allLeaders.filter((l) => {
+      const leaderProjIds = l.projetos_ids && l.projetos_ids.length > 0
+        ? l.projetos_ids
+        : [l.unidade_id || (l as any).projeto_id].filter(Boolean);
+      return leaderProjIds.some((id) => formData.projetos_ids.includes(id as string));
+    });
+  }, [formData.projetos_ids, currentUser]);
+
+  const handleToggleProject = (projId: string) => {
+    setFormData((prev) => {
+      const exists = prev.projetos_ids.includes(projId);
+      const updated = exists
+        ? prev.projetos_ids.filter((id) => id !== projId)
+        : [...prev.projetos_ids, projId];
+      return { ...prev, projetos_ids: updated };
+    });
+  };
 
   const handleOpenCreateModal = () => {
     setEditingGoal(null);
+    const today = new Date();
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
     setFormData({
       indicador: '',
       meta_valor: 100,
-      valor_atual: 0,
       unidade_medida: '%',
       tipo_periodo: 'MENSAL',
-      periodo: 'Setembro / 2026',
-      data_inicio: '2026-09-01',
-      data_fim: '2026-09-30',
-      unidade_id: '',
-      lider_id: '',
+      periodo: `${monthNames[today.getMonth()]} / ${today.getFullYear()}`,
+      data_inicio: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
+      data_fim: new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0],
+      projetos_ids: projects[0]?.id ? [projects[0].id] : [],
       direcao_melhor: 'MAIOR_MELHOR',
       descricao: '',
     });
@@ -91,17 +136,21 @@ export const GoalsManagementView: React.FC = () => {
 
   const handleOpenEditModal = (goal: Meta) => {
     setEditingGoal(goal);
+    let initialProjectIds = goal.projetos_ids && goal.projetos_ids.length > 0
+      ? goal.projetos_ids
+      : goal.unidade_id || goal.projeto_id
+      ? [goal.unidade_id || goal.projeto_id!]
+      : [];
+
     setFormData({
       indicador: goal.indicador,
       meta_valor: goal.meta_valor,
-      valor_atual: goal.valor_atual,
       unidade_medida: goal.unidade_medida,
       tipo_periodo: goal.tipo_periodo,
       periodo: goal.periodo,
       data_inicio: goal.data_inicio || '',
       data_fim: goal.data_fim || '',
-      unidade_id: goal.unidade_id || '',
-      lider_id: goal.lider_id || '',
+      projetos_ids: initialProjectIds,
       direcao_melhor: goal.direcao_melhor || 'MAIOR_MELHOR',
       descricao: goal.descricao || '',
     });
@@ -121,22 +170,33 @@ export const GoalsManagementView: React.FC = () => {
       return;
     }
 
-    const selectedUnit = units.find((u) => u.id === formData.unidade_id);
-    const selectedLeader = leaders.find((l) => l.id === formData.lider_id);
+    const selectedProjectObjs = projects.filter((u) => formData.projetos_ids.includes(u.id));
+    const selectedProjectNames = selectedProjectObjs.map((p) => p.nome);
+    const primaryProject = selectedProjectObjs[0];
+
+    const leaderIds = autoIdentifiedLeaders.map((l) => l.usuario_id || l.id);
+    const leaderNames = autoIdentifiedLeaders.map((l) => l.nome);
+    const primaryLeader = autoIdentifiedLeaders[0];
 
     const goalPayload = {
       indicador: formData.indicador.trim(),
       meta_valor: Number(formData.meta_valor),
-      valor_atual: Number(formData.valor_atual),
+      valor_atual: editingGoal ? editingGoal.valor_atual : 0,
       unidade_medida: formData.unidade_medida,
       tipo_periodo: formData.tipo_periodo,
       periodo: formData.periodo.trim(),
       data_inicio: formData.data_inicio,
       data_fim: formData.data_fim,
-      unidade_id: formData.unidade_id || undefined,
-      unidade_nome: selectedUnit?.nome || undefined,
-      lider_id: formData.lider_id || undefined,
-      lider_nome: selectedLeader?.nome || undefined,
+      unidade_id: primaryProject?.id,
+      unidade_nome: primaryProject?.nome,
+      projeto_id: primaryProject?.id,
+      projeto_nome: primaryProject?.nome,
+      projetos_ids: formData.projetos_ids,
+      projetos_nomes: selectedProjectNames,
+      lider_id: primaryLeader?.usuario_id || primaryLeader?.id,
+      lider_nome: primaryLeader?.nome,
+      lideres_ids: leaderIds,
+      lideres_nomes: leaderNames,
       direcao_melhor: formData.direcao_melhor,
       descricao: formData.descricao.trim(),
     };
@@ -144,25 +204,42 @@ export const GoalsManagementView: React.FC = () => {
     if (editingGoal) {
       dbStore.updateGoal(editingGoal.id, goalPayload);
     } else {
-      dbStore.createGoal(goalPayload);
+      if (autoIdentifiedLeaders.length > 1) {
+        autoIdentifiedLeaders.forEach((leader) => {
+          const leaderProjIds = leader.projetos_ids && leader.projetos_ids.length > 0
+            ? leader.projetos_ids
+            : [leader.unidade_id || (leader as any).projeto_id].filter(Boolean);
+          const matchedProj = projects.find((p) => leaderProjIds.includes(p.id)) || primaryProject;
+
+          dbStore.createGoal({
+            ...goalPayload,
+            unidade_id: matchedProj?.id,
+            unidade_nome: matchedProj?.nome,
+            projeto_id: matchedProj?.id,
+            projeto_nome: matchedProj?.nome,
+            projetos_ids: [matchedProj?.id || primaryProject.id],
+            projetos_nomes: [matchedProj?.nome || primaryProject.nome],
+            lider_id: leader.usuario_id || leader.id,
+            lider_nome: leader.nome,
+            lideres_ids: [leader.usuario_id || leader.id],
+            lideres_nomes: [leader.nome],
+          });
+        });
+      } else {
+        dbStore.createGoal(goalPayload);
+      }
     }
 
     setIsModalOpen(false);
   };
 
-  const handleSaveQuickRealized = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickUpdateGoal) return;
-    dbStore.updateGoalRealized(quickUpdateGoal.id, Number(quickRealizedVal));
-    setQuickUpdateGoal(null);
-  };
-
   // Filtered goals
   const filteredGoals = useMemo(() => {
     return goals.filter((goal) => {
-      const matchPeriod = selectedPeriodicity === 'TODAS' || goal.tipo_periodo === selectedPeriodicity;
-      const matchUnit = selectedUnitId === 'TODAS' || goal.unidade_id === selectedUnitId;
+      const matchPeriodicity = selectedPeriodicity === 'TODAS' || goal.tipo_periodo === selectedPeriodicity;
+      const matchProject = selectedProjectId === 'TODOS' || goal.unidade_id === selectedProjectId || goal.projeto_id === selectedProjectId;
       const matchLeader = selectedLeaderId === 'TODOS' || goal.lider_id === selectedLeaderId;
+      const matchPeriod = isDateInPeriod(goal.data_inicio || goal.data_fim, period);
       const matchSearch =
         searchTerm === '' ||
         goal.indicador.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -170,9 +247,9 @@ export const GoalsManagementView: React.FC = () => {
         (goal.unidade_nome && goal.unidade_nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (goal.lider_nome && goal.lider_nome.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      return matchPeriod && matchUnit && matchLeader && matchSearch;
+      return matchPeriodicity && matchProject && matchLeader && matchPeriod && matchSearch;
     });
-  }, [goals, selectedPeriodicity, selectedUnitId, selectedLeaderId, searchTerm]);
+  }, [goals, selectedPeriodicity, selectedProjectId, selectedLeaderId, searchTerm, period]);
 
   // Summary Metrics
   const metrics = useMemo(() => {
@@ -180,7 +257,7 @@ export const GoalsManagementView: React.FC = () => {
     let reached = 0;
     goals.forEach((g) => {
       if (g.direcao_melhor === 'MENOR_MELHOR') {
-        if (g.valor_atual <= g.meta_valor) reached++;
+        if (g.valor_atual <= g.meta_valor && g.valor_atual > 0) reached++;
       } else {
         if (g.valor_atual >= g.meta_valor) reached++;
       }
@@ -217,18 +294,29 @@ export const GoalsManagementView: React.FC = () => {
             Gestão de Metas & Indicadores
           </h1>
           <p className="text-stone-600 text-sm mt-1">
-            Cadastre metas por período (diárias, semanais e mensais), vincule a unidades ou líderes e atualize valores realizados.
+            Defina as metas operacionais por período (diárias, semanais e mensais). Os líderes reportam o realizado diretamente na Área do Líder.
           </p>
         </div>
 
-        <button
-          id="btn-create-goal"
-          onClick={handleOpenCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#C76B4A] hover:bg-[#b55e3e] text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Cadastrar Nova Meta</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-all shadow-xs shrink-0"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Importar Metas (.xlsx)</span>
+          </button>
+
+          <button
+            id="btn-create-goal"
+            onClick={handleOpenCreateModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#C76B4A] hover:bg-[#b55e3e] text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Nova Meta</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -247,20 +335,29 @@ export const GoalsManagementView: React.FC = () => {
               {metrics.percentReached}%
             </span>
           </div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Dentro ou acima do target</span>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Realizado dentro do target</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
           <span className="text-xs font-semibold text-stone-500 block">Em Andamento</span>
           <div className="text-2xl font-black text-[#C76B4A] mt-1">{metrics.inProgress}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Aguardando entrega</span>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Aguardando reporte dos líderes</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
-          <span className="text-xs font-semibold text-stone-500 block">Unidades Cobertas</span>
-          <div className="text-2xl font-black text-stone-900 mt-1">{units.length}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Com metas ativas vinculadas</span>
+          <span className="text-xs font-semibold text-stone-500 block">Projetos Cobertos</span>
+          <div className="text-2xl font-black text-stone-900 mt-1">{projects.length}</div>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Com indicadores cadastrados</span>
         </div>
+      </div>
+
+      {/* Period Filter Bar */}
+      <div className="p-3 bg-white rounded-2xl border border-stone-200 shadow-xs flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-900">
+          <Calendar className="w-4 h-4 text-[#C76B4A]" />
+          <span>Filtro de Período Geral:</span>
+        </div>
+        <PeriodFilter value={period} onChange={setPeriod} />
       </div>
 
       {/* Filter and Search Bar */}
@@ -282,7 +379,7 @@ export const GoalsManagementView: React.FC = () => {
                 onClick={() => setSelectedPeriodicity(p.id)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                   selectedPeriodicity === p.id
-                    ? 'bg-white text-stone-900 shadow-xs'
+                    ? 'bg-white text-stone-900 shadow-xs font-bold'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
@@ -305,20 +402,20 @@ export const GoalsManagementView: React.FC = () => {
           </div>
         </div>
 
-        {/* Dropdown filters for Unit and Leader */}
+        {/* Dropdown filters for Project and Leader */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-stone-100">
           <div>
-            <label className="text-[11px] font-semibold text-stone-500 mb-1 block">Filtrar por Unidade</label>
+            <label className="text-[11px] font-semibold text-stone-500 mb-1 block">Filtrar por Projeto</label>
             <select
               id="select-filter-goal-unit"
-              value={selectedUnitId}
-              onChange={(e) => setSelectedUnitId(e.target.value)}
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
               className="w-full px-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-200 text-stone-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
             >
-              <option value="TODAS">Todas as Unidades</option>
-              {units.map((u) => (
+              <option value="TODOS">Todos os Projetos</option>
+              {projects.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.nome} ({u.codigo})
+                  {u.nome}
                 </option>
               ))}
             </select>
@@ -335,7 +432,7 @@ export const GoalsManagementView: React.FC = () => {
               <option value="TODOS">Todos os Líderes</option>
               {leaders.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.nome} ({l.unidade_nome || 'Sem unidade'})
+                  {l.nome} ({l.unidade_nome || 'Sem projeto'})
                 </option>
               ))}
             </select>
@@ -343,16 +440,16 @@ export const GoalsManagementView: React.FC = () => {
         </div>
       </div>
 
-      {/* Goals Table / List */}
+      {/* Goals Table */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-stone-800">
             <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 uppercase font-semibold text-[11px]">
               <tr>
                 <th className="px-4 py-3.5">Indicador & Periodicidade</th>
-                <th className="px-4 py-3.5">Vínculo (Unidade/Líder)</th>
-                <th className="px-4 py-3.5">Meta</th>
-                <th className="px-4 py-3.5">Realizado</th>
+                <th className="px-4 py-3.5">Projeto / Líder</th>
+                <th className="px-4 py-3.5">Meta Target</th>
+                <th className="px-4 py-3.5">Realizado (Líder)</th>
                 <th className="px-4 py-3.5">Progresso</th>
                 <th className="px-4 py-3.5">Status</th>
                 <th className="px-4 py-3.5 text-right">Ações</th>
@@ -371,7 +468,7 @@ export const GoalsManagementView: React.FC = () => {
                   let percent = 0;
                   let isReached = false;
                   if (isSmallerBetter) {
-                    isReached = goal.valor_atual <= goal.meta_valor;
+                    isReached = goal.valor_atual <= goal.meta_valor && goal.valor_atual > 0;
                     percent = goal.meta_valor > 0 ? Math.round((goal.meta_valor / Math.max(goal.valor_atual, 0.01)) * 100) : 100;
                   } else {
                     isReached = goal.valor_atual >= goal.meta_valor;
@@ -394,7 +491,7 @@ export const GoalsManagementView: React.FC = () => {
 
                       <td className="px-4 py-3.5">
                         <div className="text-stone-800 font-medium truncate max-w-[180px]">
-                          {goal.unidade_nome || 'Geral (Toda a Rede)'}
+                          {goal.unidade_nome || goal.projeto_nome || 'Geral (Todos os Projetos)'}
                         </div>
                         {goal.lider_nome && (
                           <div className="text-[11px] text-stone-600 truncate max-w-[180px]">
@@ -407,18 +504,12 @@ export const GoalsManagementView: React.FC = () => {
                         {formatVal(goal.meta_valor, goal.unidade_medida)}
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <button
-                          onClick={() => {
-                            setQuickUpdateGoal(goal);
-                            setQuickRealizedVal(goal.valor_atual);
-                          }}
-                          className="group inline-flex items-center gap-1.5 px-2.5 py-1 bg-stone-100 hover:bg-orange-50 text-stone-900 hover:text-orange-950 font-bold rounded-lg border border-stone-200 hover:border-orange-300 transition-colors"
-                          title="Clique para atualizar o valor realizado rapidamente"
-                        >
-                          <span>{formatVal(goal.valor_atual, goal.unidade_medida)}</span>
-                          <Edit2 className="w-3 h-3 text-stone-400 group-hover:text-orange-800" />
-                        </button>
+                      <td className="px-4 py-3.5 whitespace-nowrap font-bold text-[#C76B4A]">
+                        {goal.valor_atual > 0 ? (
+                          formatVal(goal.valor_atual, goal.unidade_medida)
+                        ) : (
+                          <span className="text-stone-400 font-normal italic">Não reportado</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
@@ -446,9 +537,13 @@ export const GoalsManagementView: React.FC = () => {
                           <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Atingida
                           </span>
-                        ) : (
+                        ) : goal.valor_atual > 0 ? (
                           <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
                             <Clock className="w-3 h-3" /> Em Andamento
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-stone-100 text-stone-600 border border-stone-200 inline-flex items-center gap-1">
+                            Aguardando
                           </span>
                         )}
                       </td>
@@ -458,7 +553,7 @@ export const GoalsManagementView: React.FC = () => {
                           <button
                             onClick={() => handleOpenEditModal(goal)}
                             className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                            title="Editar Meta Completa"
+                            title="Editar Meta"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -480,62 +575,13 @@ export const GoalsManagementView: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Realized Value Update Modal */}
-      {quickUpdateGoal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-stone-200">
-            <h3 className="text-base font-bold text-stone-900 mb-1">
-              Atualizar Realizado
-            </h3>
-            <p className="text-xs text-stone-500 mb-4">
-              Meta: <strong>{quickUpdateGoal.indicador}</strong> ({quickUpdateGoal.periodo})
-            </p>
-
-            <form onSubmit={handleSaveQuickRealized} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-stone-700 mb-1 block">
-                  Novo Valor Realizado ({quickUpdateGoal.unidade_medida})
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={quickRealizedVal}
-                  onChange={(e) => setQuickRealizedVal(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm bg-stone-50 rounded-xl border border-stone-300 font-bold text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                  autoFocus
-                />
-                <span className="text-[11px] text-stone-400 mt-1 block">
-                  Meta estabelecida: {formatVal(quickUpdateGoal.meta_valor, quickUpdateGoal.unidade_medida)}
-                </span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setQuickUpdateGoal(null)}
-                  className="px-3.5 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#C76B4A] hover:bg-[#b55e3e] text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-                >
-                  Salvar Realizado
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Create / Edit Goal Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-xl w-full shadow-2xl border border-stone-200 my-8">
+          <div className="bg-white rounded-3xl p-6 max-w-xl w-full shadow-2xl border border-stone-200 my-8">
             <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
               <h3 className="text-lg font-black text-stone-900">
-                {editingGoal ? 'Editar Meta' : 'Cadastrar Nova Meta'}
+                {editingGoal ? 'Editar Meta Operacional' : 'Cadastrar Nova Meta Operacional'}
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -556,7 +602,7 @@ export const GoalsManagementView: React.FC = () => {
                   value={formData.indicador}
                   onChange={(e) => setFormData({ ...formData, indicador: e.target.value })}
                   placeholder="Ex: Produção, Atendimento, Absenteísmo, Qualidade..."
-                  className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-medium"
                   required
                 />
                 <div className="flex flex-wrap gap-1.5 mt-2">
@@ -574,66 +620,218 @@ export const GoalsManagementView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Periodicidade & Período */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Periodicidade *
-                  </label>
-                  <select
-                    value={formData.tipo_periodo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tipo_periodo: e.target.value as GoalPeriodicity })
-                    }
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                  >
-                    <option value="DIARIA">Diária</option>
-                    <option value="SEMANAL">Semanal</option>
-                    <option value="MENSAL">Mensal</option>
-                  </select>
+              {/* Periodicidade & Conditional Period Inputs */}
+              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-stone-700 mb-1 block">
+                      Periodicidade da Meta *
+                    </label>
+                    <select
+                      value={formData.tipo_periodo}
+                      onChange={(e) => setFormData({ ...formData, tipo_periodo: e.target.value as GoalPeriodicity })}
+                      className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-semibold"
+                    >
+                      <option value="DIARIA">Diária</option>
+                      <option value="SEMANAL">Semanal</option>
+                      <option value="MENSAL">Mensal</option>
+                    </select>
+                  </div>
+
+                  {formData.tipo_periodo === 'DIARIA' && (
+                    <>
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Data de Início *
+                        </label>
+                        <input
+                          type="date"
+                          min={new Date().toISOString().split('T')[0]}
+                          value={formData.data_inicio}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const parts = val.split('-');
+                            const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : val;
+                            setFormData({
+                              ...formData,
+                              data_inicio: val,
+                              data_fim: formData.data_fim && formData.data_fim >= val ? formData.data_fim : val,
+                              periodo: formatted,
+                            });
+                          }}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Data fim (Validade da Meta) *
+                        </label>
+                        <input
+                          type="date"
+                          min={formData.data_inicio || new Date().toISOString().split('T')[0]}
+                          value={formData.data_fim || formData.data_inicio}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              data_fim: e.target.value,
+                            });
+                          }}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {formData.tipo_periodo === 'SEMANAL' && (
+                    <>
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Semana (Data de Início) *
+                        </label>
+                        <input
+                          type="date"
+                          min={new Date().toISOString().split('T')[0]}
+                          value={formData.data_inicio}
+                          onChange={(e) => {
+                            const start = new Date(e.target.value);
+                            const end = new Date(start);
+                            end.setDate(start.getDate() + 6);
+                            const startStr = `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}`;
+                            const endStr = `${String(end.getDate()).padStart(2, '0')}/${String(end.getMonth() + 1).padStart(2, '0')}/${end.getFullYear()}`;
+                            setFormData({
+                              ...formData,
+                              data_inicio: e.target.value,
+                              data_fim: end.toISOString().split('T')[0],
+                              periodo: `Semana (${startStr} a ${endStr})`,
+                            });
+                          }}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Semana (Data de Término) *
+                        </label>
+                        <input
+                          type="date"
+                          min={formData.data_inicio || new Date().toISOString().split('T')[0]}
+                          value={formData.data_fim}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              data_fim: e.target.value,
+                            });
+                          }}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {formData.tipo_periodo === 'MENSAL' && (
+                    <>
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Mês de Referência *
+                        </label>
+                        <select
+                          value={formData.periodo}
+                          onChange={(e) => {
+                            const selectedMonthLabel = e.target.value;
+                            const monthNames = [
+                              'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                              'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                            ];
+                            const currentYear = new Date().getFullYear();
+                            const monthIndex = monthNames.findIndex((m) => selectedMonthLabel.startsWith(m));
+                            const yearMatch = selectedMonthLabel.match(/\d{4}/);
+                            const year = yearMatch ? parseInt(yearMatch[0], 10) : currentYear;
+
+                            if (monthIndex >= 0) {
+                              const firstDay = new Date(year, monthIndex, 1).toISOString().split('T')[0];
+                              const lastDay = new Date(year, monthIndex + 1, 0).toISOString().split('T')[0];
+                              setFormData({
+                                ...formData,
+                                periodo: selectedMonthLabel,
+                                data_inicio: firstDay,
+                                data_fim: lastDay,
+                              });
+                            } else {
+                              setFormData({
+                                ...formData,
+                                periodo: selectedMonthLabel,
+                              });
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-medium"
+                          required
+                        >
+                          {(() => {
+                            const today = new Date();
+                            const monthNames = [
+                              'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                              'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                            ];
+                            const list: { label: string; value: string }[] = [];
+                            for (let offset = -1; offset <= 12; offset++) {
+                              const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                              const mName = monthNames[d.getMonth()];
+                              const yr = d.getFullYear();
+                              const value = `${mName} / ${yr}`;
+                              let tag = '';
+                              if (offset === -1) tag = ' (Mês Anterior)';
+                              else if (offset === 0) tag = ' (Mês Atual)';
+                              list.push({ value, label: `${value}${tag}` });
+                            }
+
+                            return list.map((item) => (
+                              <option key={item.label} value={item.value}>
+                                {item.label}
+                              </option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-semibold text-stone-700 mb-1 block">
+                          Data Limite / Fim da Meta *
+                        </label>
+                        <input
+                          type="date"
+                          min={new Date().toISOString().split('T')[0]}
+                          value={formData.data_fim}
+                          onChange={(e) => setFormData({ ...formData, data_fim: e.target.value })}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Rótulo do Período de Validade *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.periodo}
-                    onChange={(e) => setFormData({ ...formData, periodo: e.target.value })}
-                    placeholder="Ex: Agosto / 2026, Semana 35, 01/09/2026"
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                    required
-                  />
+                <div className="text-[11px] text-stone-500 font-medium">
+                  Rótulo gerado: <strong className="text-stone-800">{formData.periodo}</strong> {formData.data_fim && <span>• Término em: <strong className="text-stone-800">{formData.data_fim.split('-').reverse().join('/')}</strong></span>}
                 </div>
               </div>
 
-              {/* Meta & Realizado & Unidade de Medida */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Meta Valor & Unidade de Medida (NO Realizado here!) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-stone-700 mb-1 block">
-                    Meta (Valor) *
+                    Meta Target (Valor a Atingir) *
                   </label>
                   <input
                     type="number"
                     step="any"
                     value={formData.meta_valor}
                     onChange={(e) => setFormData({ ...formData, meta_valor: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 font-bold focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 font-bold focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
                     required
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Realizado Inicial
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={formData.valor_atual}
-                    onChange={(e) => setFormData({ ...formData, valor_atual: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 font-bold focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
                   />
                 </div>
 
@@ -644,7 +842,7 @@ export const GoalsManagementView: React.FC = () => {
                   <select
                     value={formData.unidade_medida}
                     onChange={(e) => setFormData({ ...formData, unidade_medida: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
                   >
                     <option value="%">% (Percentual)</option>
                     <option value="unidades">unidades</option>
@@ -697,42 +895,59 @@ export const GoalsManagementView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Vínculo: Unidade e Líder */}
+              {/* Vínculo: Projeto (Multi-seleção) e Líderes Atribuidos Automaticamente */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Vincular a uma Unidade (Opcional)
+                  <label className="font-semibold text-stone-700 mb-1 block text-xs">
+                    Projeto(s) Vinculado(s) (Multi-seleção)
                   </label>
-                  <select
-                    value={formData.unidade_id}
-                    onChange={(e) => setFormData({ ...formData, unidade_id: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                  >
-                    <option value="">Geral (Toda a Rede / Sem unidade fixa)</option>
-                    {units.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="border border-stone-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-stone-50">
+                    {projects.length === 0 ? (
+                      <span className="text-xs text-stone-400">Nenhum projeto cadastrado</span>
+                    ) : (
+                      projects.map((p) => {
+                        const isChecked = formData.projetos_ids.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
+                              isChecked ? 'bg-[#C76B4A]/10 text-[#C76B4A] font-bold' : 'hover:bg-stone-100 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleProject(p.id)}
+                              className="rounded border-stone-300 text-[#C76B4A] focus:ring-0"
+                            />
+                            <span>{p.nome}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
 
                 <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Vincular a um Líder Específico (Opcional)
+                  <label className="font-semibold text-stone-700 mb-1 block text-xs">
+                    Líder(es) Atribuído(s) Automaticamente
                   </label>
-                  <select
-                    value={formData.lider_id}
-                    onChange={(e) => setFormData({ ...formData, lider_id: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                  >
-                    <option value="">Geral (Todos os Líderes da Unidade)</option>
-                    {leaders.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.nome} ({l.unidade_nome || 'Sem unidade'})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="border border-stone-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-emerald-50/50">
+                    <p className="text-[10px] text-emerald-800 font-medium mb-1">
+                      Identificado(s) com base nos projeto(s) selecionados:
+                    </p>
+                    {autoIdentifiedLeaders.length === 0 ? (
+                      <span className="text-xs text-amber-700 font-semibold block">Nenhum líder vinculado a este(s) projeto(s)</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {autoIdentifiedLeaders.map((l) => (
+                          <span key={l.id} className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-bold text-[11px] border border-emerald-200">
+                            {l.nome}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -769,6 +984,13 @@ export const GoalsManagementView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Goal Import Modal */}
+      <GoalImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={() => loadData()}
+      />
     </div>
   );
 };

@@ -4,43 +4,32 @@ import {
   Mail, 
   ArrowRight, 
   AlertCircle, 
-  CheckCircle2, 
   ShieldCheck, 
   Loader2, 
   Layers,
-  Inbox,
-  Database,
-  Sparkles,
-  Info
+  Database
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
-import { EmailConfirmationModal } from './EmailConfirmationModal';
-import { EmailSimulationInbox } from './EmailSimulationInbox';
 
 interface LoginViewProps {
-  onSwitchToRegister: () => void;
-  onOpenDatabaseSchema: () => void;
+  onOpenDatabaseSchema?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpenDatabaseSchema }) => {
-  const { login, switchActiveUser, allUsers } = useAuth();
+export const LoginView: React.FC<LoginViewProps> = ({ onOpenDatabaseSchema }) => {
+  const { login } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   // Modals
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showInboxModal, setShowInboxModal] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    setPendingEmail(null);
 
     if (!email.trim() || !password.trim()) {
       setErrorMessage('Por favor, preencha todos os campos.');
@@ -53,9 +42,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
     } catch (err: any) {
       const msg = err.message || 'Erro ao efetuar login.';
       setErrorMessage(msg);
-      if (msg.includes('pendente de confirmação')) {
-        setPendingEmail(email.trim());
-      }
     } finally {
       setLoading(false);
     }
@@ -65,7 +51,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
     setEmail(demoEmail);
     setPassword(demoPass);
     setErrorMessage(null);
-    setPendingEmail(null);
   };
 
   return (
@@ -80,31 +65,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-[#343A40] text-lg tracking-tight">Central do Líder</span>
               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#355C7D]/10 text-[#355C7D] uppercase">
-                v1.0 • Fundação
+                Sistema de Gestão
               </span>
             </div>
-            <span className="text-xs text-gray-500 hidden sm:block">Gestão Operacional de Unidades & Governança</span>
+            <span className="text-xs text-gray-500 hidden sm:block">Gestão Operacional de Projetos & Governança</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setShowInboxModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#edf3fc] text-[#5B7DBE] hover:bg-[#dfeaf8] transition"
-            title="Visualizar e-mails de confirmação e ativação enviados"
-          >
-            <Inbox className="w-4 h-4" />
-            <span className="hidden md:inline">Caixa de E-mails</span>
-          </button>
-
-          <button
-            onClick={onOpenDatabaseSchema}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#f7f2ed] text-[#8B6B4A] hover:bg-[#ede3d8] transition"
-            title="Inspecionar DDL SQL e tabelas do banco Supabase"
-          >
-            <Database className="w-4 h-4" />
-            <span className="hidden md:inline">Estrutura de Banco</span>
-          </button>
+        <div className="flex items-center gap-2 sm:gap-3">
+          {onOpenDatabaseSchema && (
+            <button
+              onClick={onOpenDatabaseSchema}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#f7f2ed] text-[#8B6B4A] hover:bg-[#ede3d8] transition border border-[#8B6B4A]/20"
+              title="Inspecionar DDL SQL e tabelas do banco Supabase"
+            >
+              <Database className="w-4 h-4" />
+              <span className="hidden md:inline">Estrutura de Banco</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -119,11 +97,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#5B7DBE]/10 rounded-full blur-3xl pointer-events-none"></div>
 
             <div className="relative z-10 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium backdrop-blur-sm border border-white/15">
-                <Sparkles className="w-3.5 h-3.5 text-[#C76B4A]" />
-                Etapa 1/5: Fundação & Segurança
-              </div>
-
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
                   Controle operacional completo para líderes e gestão.
@@ -138,8 +111,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
                 <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-start gap-3">
                   <ShieldCheck className="w-5 h-5 text-[#C76B4A] shrink-0 mt-0.5" />
                   <div className="text-xs">
-                    <p className="font-bold text-white">Autenticação com Validação de E-mail</p>
-                    <p className="text-gray-300 mt-0.5">Acesso restrito a usuários com cadastro confirmado (regra 3.3).</p>
+                    <p className="font-bold text-white">Acesso Corporativo Seguro</p>
+                    <p className="text-gray-300 mt-0.5">Cadastros e permissões gerenciados centralmente pela administração.</p>
                   </div>
                 </div>
 
@@ -147,7 +120,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
                   <Layers className="w-5 h-5 text-[#5B7DBE] shrink-0 mt-0.5" />
                   <div className="text-xs">
                     <p className="font-bold text-white">Controle de Perfis (RBAC)</p>
-                    <p className="text-gray-300 mt-0.5">Visão segmentada para <strong>Administrador</strong> e <strong>Líder de Unidade</strong>.</p>
+                    <p className="text-gray-300 mt-0.5">Visão segmentada para <strong>Administrador</strong> e <strong>Líder de Projeto</strong>.</p>
                   </div>
                 </div>
               </div>
@@ -183,17 +156,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
           {/* Right Login Form Card */}
           <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-10 border border-gray-200/80 shadow-lg flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between border-b border-gray-100 pb-5 mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-[#343A40]">Acessar o Sistema</h2>
-                  <p className="text-xs text-gray-500 mt-1">Informe suas credenciais para entrar na sua área</p>
-                </div>
-                <button
-                  onClick={onSwitchToRegister}
-                  className="text-xs font-bold text-[#C76B4A] hover:underline flex items-center gap-1"
-                >
-                  Criar conta <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              <div className="border-b border-gray-100 pb-5 mb-6">
+                <h2 className="text-2xl font-bold text-[#343A40]">Acessar o Sistema</h2>
+                <p className="text-xs text-gray-500 mt-1">Informe suas credenciais para entrar na sua área</p>
               </div>
 
               {/* Alert message if any */}
@@ -203,27 +168,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{errorMessage}</span>
                   </div>
-
-                  {pendingEmail && (
-                    <div className="pt-2 border-t border-[#B85C7A]/20 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowConfirmModal(true);
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-[#C76B4A] text-white font-bold hover:bg-[#b55d3d] transition text-[11px]"
-                      >
-                        Digitar código de confirmação
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowInboxModal(true)}
-                        className="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition text-[11px]"
-                      >
-                        Abrir caixa de e-mails simulada
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -295,21 +239,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
                 </button>
               </form>
             </div>
-
-            {/* Footer with testing actions */}
-            <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
-              <div className="flex items-center gap-1.5 text-gray-600">
-                <Info className="w-3.5 h-3.5 text-[#355C7D]" />
-                <span>Teste de validação: Cadastre um e-mail novo para conferir o fluxo de e-mail obrigatório.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(true)}
-                className="text-[#355C7D] font-bold hover:underline shrink-0"
-              >
-                Já tem um token? Ativar
-              </button>
-            </div>
           </div>
         </div>
       </main>
@@ -318,8 +247,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
       <footer className="w-full bg-white border-t border-gray-200 px-6 py-3.5 text-center text-xs text-gray-500 flex flex-col sm:flex-row items-center justify-between gap-2">
         <span>© 2026 Central do Líder • Gestão Operacional & Governança</span>
         <div className="flex items-center gap-4 text-gray-400">
-          <span>PostgreSQL + Supabase Schema Ready</span>
-          <span>•</span>
           <span>Role-Based Access Control (RBAC)</span>
         </div>
       </footer>
@@ -329,22 +256,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onOpen
         isOpen={showForgotPassword}
         onClose={() => setShowForgotPassword(false)}
         initialEmail={email}
-        onOpenInbox={() => setShowInboxModal(true)}
-      />
-
-      <EmailConfirmationModal
-        isOpen={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        initialEmail={email}
-        onSuccess={() => {
-          setShowConfirmModal(false);
-          setErrorMessage(null);
-        }}
-      />
-
-      <EmailSimulationInbox
-        isOpen={showInboxModal}
-        onClose={() => setShowInboxModal(false)}
       />
     </div>
   );

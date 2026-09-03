@@ -1,39 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { Lider, Unidade, TarefaOS, LeaderStatus, UsuarioPerfil } from '../../types/database';
+import { Lider, Projeto, TarefaOS, LeaderStatus, UsuarioPerfil } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
-import { UnitsManagementModal } from './UnitsManagementModal';
 import {
   Briefcase,
-  Building2,
+  FolderKanban,
   Mail,
   Phone,
   Search,
   CheckCircle2,
-  Clock,
-  AlertTriangle,
-  ExternalLink,
   ShieldCheck,
-  TrendingUp,
   UserCheck,
   UserPlus,
   Edit2,
   Trash2,
   X,
   Save,
-  AlertCircle
+  AlertCircle,
+  ExternalLink,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
 
 export const LeadersManagementView: React.FC = () => {
   const { setActiveTab } = useAuth();
   const [leaders, setLeaders] = useState<Lider[]>([]);
-  const [units, setUnits] = useState<Unidade[]>([]);
+  const [projects, setProjects] = useState<Projeto[]>([]);
   const [tasks, setTasks] = useState<TarefaOS[]>([]);
   const [users, setUsers] = useState<UsuarioPerfil[]>([]);
   const [search, setSearch] = useState('');
-  const [selectedUnit, setSelectedUnit] = useState('');
+  const [selectedProject, setSelectedProject] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
-  const [unitsModalOpen, setUnitsModalOpen] = useState(false);
+
+  // Period Filter State
+  const [period, setPeriod] = useState<PeriodFilterValue>({
+    mode: 'TODOS',
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  });
 
   // Leader Form Modal State
   const [leaderModalOpen, setLeaderModalOpen] = useState(false);
@@ -42,11 +46,9 @@ export const LeadersManagementView: React.FC = () => {
     usuario_id: '',
     nome: '',
     email: '',
-    matricula: '',
     cargo: '',
-    unidade_id: '',
-    regional: '',
-    gestor: '',
+    projetos_ids: [] as string[],
+    gestores_imediatos_ids: [] as string[],
     status: 'ATIVO' as LeaderStatus,
     telefone: '',
   });
@@ -57,7 +59,7 @@ export const LeadersManagementView: React.FC = () => {
 
   const loadData = () => {
     setLeaders(dbStore.getLeaders());
-    setUnits(dbStore.getUnits());
+    setProjects(dbStore.getUnits());
     setTasks(dbStore.getTasks());
     setUsers(dbStore.getUsers());
   };
@@ -68,17 +70,17 @@ export const LeadersManagementView: React.FC = () => {
     return () => unsub();
   }, []);
 
+  const gerenciaUsers = users.filter((u) => u.role === 'GERENCIA');
+
   const handleOpenCreateModal = () => {
     setEditingLeader(null);
     setFormData({
       usuario_id: '',
       nome: '',
       email: '',
-      matricula: 'LID-' + Math.floor(1000 + Math.random() * 9000),
-      cargo: 'Líder Operacional de Unidade',
-      unidade_id: units[0]?.id || '',
-      regional: 'Regional Sudeste',
-      gestor: 'Diretoria de Operações',
+      cargo: 'Líder Operacional de Projeto',
+      projetos_ids: projects[0]?.id ? [projects[0].id] : [],
+      gestores_imediatos_ids: gerenciaUsers[0]?.id ? [gerenciaUsers[0].id] : [],
       status: 'ATIVO',
       telefone: '',
     });
@@ -87,15 +89,28 @@ export const LeadersManagementView: React.FC = () => {
 
   const handleOpenEditModal = (leader: Lider) => {
     setEditingLeader(leader);
+    
+    // Fallback logic for projects
+    let initialProjectIds = leader.projetos_ids && leader.projetos_ids.length > 0
+      ? leader.projetos_ids
+      : leader.unidade_id
+      ? [leader.unidade_id]
+      : (leader as any).projeto_id
+      ? [(leader as any).projeto_id]
+      : [];
+
+    // Fallback logic for gestores
+    let initialGestorIds = leader.gestores_imediatos_ids && leader.gestores_imediatos_ids.length > 0
+      ? leader.gestores_imediatos_ids
+      : [];
+
     setFormData({
       usuario_id: leader.usuario_id || '',
       nome: leader.nome,
       email: leader.email,
-      matricula: leader.matricula || '',
       cargo: leader.cargo || '',
-      unidade_id: leader.unidade_id || '',
-      regional: leader.regional || '',
-      gestor: leader.gestor || '',
+      projetos_ids: initialProjectIds,
+      gestores_imediatos_ids: initialGestorIds,
       status: leader.status || 'ATIVO',
       telefone: leader.telefone || '',
     });
@@ -111,12 +126,32 @@ export const LeadersManagementView: React.FC = () => {
         nome: selectedUser.nome,
         email: selectedUser.email,
         telefone: selectedUser.telefone || prev.telefone,
-        unidade_id: selectedUser.unidade_id || prev.unidade_id,
+        projetos_ids: selectedUser.unidade_id ? [selectedUser.unidade_id] : prev.projetos_ids,
         cargo: selectedUser.cargo || prev.cargo,
       }));
     } else {
       setFormData((prev) => ({ ...prev, usuario_id: '' }));
     }
+  };
+
+  const handleToggleProject = (projId: string) => {
+    setFormData((prev) => {
+      const exists = prev.projetos_ids.includes(projId);
+      const updated = exists
+        ? prev.projetos_ids.filter((id) => id !== projId)
+        : [...prev.projetos_ids, projId];
+      return { ...prev, projetos_ids: updated };
+    });
+  };
+
+  const handleToggleGestor = (gestorUserId: string) => {
+    setFormData((prev) => {
+      const exists = prev.gestores_imediatos_ids.includes(gestorUserId);
+      const updated = exists
+        ? prev.gestores_imediatos_ids.filter((id) => id !== gestorUserId)
+        : [...prev.gestores_imediatos_ids, gestorUserId];
+      return { ...prev, gestores_imediatos_ids: updated };
+    });
   };
 
   const handleSaveLeader = (e: React.FormEvent) => {
@@ -126,36 +161,40 @@ export const LeadersManagementView: React.FC = () => {
       return;
     }
 
-    const unitObj = units.find((u) => u.id === formData.unidade_id);
-    const unitName = unitObj ? unitObj.nome : 'Sem unidade fixa';
+    const selectedProjectsObjs = projects.filter((p) => formData.projetos_ids.includes(p.id));
+    const selectedProjectsNames = selectedProjectsObjs.map((p) => p.nome);
+    const primaryProjectObj = selectedProjectsObjs[0];
+    const primaryProjectName = primaryProjectObj ? primaryProjectObj.nome : 'Sem projeto vinculado';
+    const primaryProjectId = primaryProjectObj ? primaryProjectObj.id : undefined;
+
+    const selectedGestoresObjs = gerenciaUsers.filter((u) => formData.gestores_imediatos_ids.includes(u.id));
+    const selectedGestoresNames = selectedGestoresObjs.map((u) => u.nome);
+    const gestoresString = selectedGestoresNames.length > 0 ? selectedGestoresNames.join(', ') : 'Diretoria de Operações';
+
+    const leaderPayload = {
+      nome: formData.nome.trim(),
+      email: formData.email.trim().toLowerCase(),
+      cargo: formData.cargo.trim(),
+      unidade: primaryProjectName,
+      unidade_id: primaryProjectId,
+      projeto: primaryProjectName,
+      projeto_id: primaryProjectId,
+      projetos_ids: formData.projetos_ids,
+      projetos_nomes: selectedProjectsNames,
+      gestor: gestoresString,
+      gestores_imediatos_ids: formData.gestores_imediatos_ids,
+      gestores_imediatos_nomes: selectedGestoresNames,
+      status: formData.status,
+      telefone: formData.telefone.trim(),
+    };
 
     if (editingLeader) {
-      dbStore.updateLeader(editingLeader.id, {
-        nome: formData.nome.trim(),
-        email: formData.email.trim().toLowerCase(),
-        matricula: formData.matricula.trim(),
-        cargo: formData.cargo.trim(),
-        unidade: unitName,
-        unidade_id: formData.unidade_id,
-        regional: formData.regional.trim(),
-        gestor: formData.gestor.trim(),
-        status: formData.status,
-        telefone: formData.telefone.trim(),
-      });
+      dbStore.updateLeader(editingLeader.id, leaderPayload);
       setActionMessage(`Líder ${formData.nome} atualizado com sucesso.`);
     } else {
       dbStore.createLeader({
         usuario_id: formData.usuario_id || 'usr-' + Date.now().toString(36),
-        nome: formData.nome.trim(),
-        email: formData.email.trim().toLowerCase(),
-        matricula: formData.matricula.trim(),
-        cargo: formData.cargo.trim(),
-        unidade: unitName,
-        unidade_id: formData.unidade_id,
-        regional: formData.regional.trim(),
-        gestor: formData.gestor.trim(),
-        status: formData.status,
-        telefone: formData.telefone.trim(),
+        ...leaderPayload,
       });
       setActionMessage(`Líder ${formData.nome} cadastrado com sucesso.`);
     }
@@ -178,39 +217,38 @@ export const LeadersManagementView: React.FC = () => {
     const matchesSearch =
       l.nome.toLowerCase().includes(search.toLowerCase()) ||
       l.email.toLowerCase().includes(search.toLowerCase()) ||
-      (l.matricula && l.matricula.toLowerCase().includes(search.toLowerCase())) ||
       (l.cargo && l.cargo.toLowerCase().includes(search.toLowerCase())) ||
       (l.unidade && l.unidade.toLowerCase().includes(search.toLowerCase()));
 
-    const matchesUnit = !selectedUnit || l.unidade_id === selectedUnit;
+    const matchesProject = !selectedProject || l.unidade_id === selectedProject || (l as any).projeto_id === selectedProject;
     const matchesStatus = !selectedStatus || l.status === selectedStatus;
-    return matchesSearch && matchesUnit && matchesStatus;
+    return matchesSearch && matchesProject && matchesStatus;
   });
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-gray-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 sm:p-8 rounded-3xl border border-gray-200/90 shadow-xs">
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-[#355C7D]/10 text-[#355C7D] text-xs font-bold mb-1.5">
             <ShieldCheck className="w-3.5 h-3.5" />
             Módulo Administrativo
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[#343A40] tracking-tight">
-            Gestão de Líderes Operacionais & Unidades
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#343A40] tracking-tight">
+            Gestão de Líderes
           </h1>
-          <p className="text-xs text-gray-500 mt-1">
-            Cadastro de gestores de unidades, matrícula, regional, acompanhamento de OS e conformidade
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Cadastro de gestores operacionais, vínculo de projeto, acompanhamento de OS e execução
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => setUnitsModalOpen(true)}
+            onClick={() => setActiveTab('admin-projetos')}
             className="px-3.5 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-[#343A40] text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-2xs transition-colors"
           >
-            <Building2 className="w-4 h-4 text-[#C76B4A]" />
-            Unidades ({units.length})
+            <FolderKanban className="w-4 h-4 text-[#C76B4A]" />
+            Projetos ({projects.length})
           </button>
 
           <button
@@ -231,13 +269,22 @@ export const LeadersManagementView: React.FC = () => {
         </div>
       )}
 
+      {/* Period Filter Bar */}
+      <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-900">
+          <Calendar className="w-4 h-4 text-[#C76B4A]" />
+          <span>Filtro de Período das Atividades dos Líderes:</span>
+        </div>
+        <PeriodFilter value={period} onChange={setPeriod} />
+      </div>
+
       {/* Filter and Search Bar */}
       <div className="p-4 bg-white rounded-2xl border border-gray-200 shadow-2xs flex flex-col sm:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Buscar por nome, matrícula, cargo, e-mail ou unidade..."
+            placeholder="Buscar líder por nome, cargo, e-mail ou projeto..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
@@ -245,14 +292,14 @@ export const LeadersManagementView: React.FC = () => {
         </div>
 
         <select
-          value={selectedUnit}
-          onChange={(e) => setSelectedUnit(e.target.value)}
+          value={selectedProject}
+          onChange={(e) => setSelectedProject(e.target.value)}
           className="w-full sm:w-56 px-3 py-2.5 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
         >
-          <option value="">Todas as Unidades</option>
-          {units.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.nome} ({u.codigo})
+          <option value="">Todos os Projetos</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nome}
             </option>
           ))}
         </select>
@@ -272,12 +319,14 @@ export const LeadersManagementView: React.FC = () => {
       {/* Leaders Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredLeaders.length === 0 ? (
-          <div className="col-span-full bg-white rounded-2xl p-12 text-center border border-gray-200 text-gray-400 text-xs">
+          <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-gray-200 text-gray-400 text-xs">
             Nenhum líder encontrado para os filtros selecionados.
           </div>
         ) : (
           filteredLeaders.map((leader) => {
-            const leaderTasks = tasks.filter((t) => t.responsavel_id === leader.usuario_id);
+            const leaderTasks = tasks
+              .filter((t) => t.responsavel_id === leader.usuario_id || (leader.email && t.responsavel_email?.toLowerCase() === leader.email.toLowerCase()))
+              .filter((t) => isDateInPeriod(t.data, period));
             const pending = leaderTasks.filter((t) => t.status !== 'CONCLUIDA');
             const completed = leaderTasks.filter((t) => t.status === 'CONCLUIDA');
             const overdue = leaderTasks.filter((t) => t.status === 'ATRASADA');
@@ -285,7 +334,7 @@ export const LeadersManagementView: React.FC = () => {
             return (
               <div
                 key={leader.id}
-                className="p-5 rounded-3xl bg-white border border-gray-200 hover:border-gray-300 transition-all shadow-xs space-y-4 flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white border border-gray-200 hover:border-gray-300 transition-all shadow-xs space-y-4 flex flex-col justify-between"
               >
                 <div className="space-y-3.5">
                   {/* Leader Top info */}
@@ -302,13 +351,12 @@ export const LeadersManagementView: React.FC = () => {
                       <div className="min-w-0">
                         <h3 className="text-sm font-bold text-[#343A40] truncate">{leader.nome}</h3>
                         <p className="text-xs text-[#8B6B4A] font-semibold truncate">{leader.cargo || 'Líder Operacional'}</p>
-                        <span className="text-[10px] text-gray-400 font-mono">Matrícula: {leader.matricula || 'N/A'}</span>
                       </div>
                     </div>
 
                     <div className="flex flex-col items-end gap-1">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 shrink-0 ${
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 shrink-0 ${
                           leader.status === 'ATIVO'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : leader.status === 'AFASTADO'
@@ -322,15 +370,28 @@ export const LeadersManagementView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Unit & Regional Badge */}
-                  <div className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#EBE3DC] space-y-1.5 text-xs">
-                    <div className="flex items-center gap-2 font-semibold text-gray-800">
-                      <Building2 className="w-3.5 h-3.5 text-[#C76B4A] shrink-0" />
-                      <span className="truncate">{leader.unidade || 'Sem unidade vinculada'}</span>
+                  {/* Project & Manager Badge */}
+                  <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#EBE3DC] space-y-2 text-xs">
+                    <div className="flex items-start gap-2 font-semibold text-gray-800">
+                      <FolderKanban className="w-4 h-4 text-[#C76B4A] shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Projetos:</span>
+                        <span className="truncate block font-bold text-stone-800">
+                          {leader.projetos_nomes && leader.projetos_nomes.length > 0
+                            ? leader.projetos_nomes.join(', ')
+                            : leader.unidade || (leader as any).projeto || 'Sem projeto vinculado'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-[#EBE3DC]/60">
-                      <span>Regional: <strong>{leader.regional || 'Geral'}</strong></span>
-                      <span>Gestor: <strong>{leader.gestor || 'Operações'}</strong></span>
+                    <div className="flex items-start justify-between text-[11px] text-gray-600 pt-1.5 border-t border-[#EBE3DC]/60">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Gestor(es) Imediato(s):</span>
+                        <span className="font-semibold text-stone-800">
+                          {leader.gestores_imediatos_nomes && leader.gestores_imediatos_nomes.length > 0
+                            ? leader.gestores_imediatos_nomes.join(', ')
+                            : leader.gestor || 'Operações'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -414,7 +475,7 @@ export const LeadersManagementView: React.FC = () => {
                     {editingLeader ? 'Editar Perfil de Líder' : 'Novo Líder Operacional'}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Defina lotação, matrícula, gestor e vínculo de unidade
+                    Defina nome, cargo, gestor e vínculo de projeto
                   </p>
                 </div>
               </div>
@@ -431,7 +492,7 @@ export const LeadersManagementView: React.FC = () => {
               {!editingLeader && (
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Vincular a Usuário Existente (Opcional)
+                    Vincular a Usuário do Sistema (Opcional)
                   </label>
                   <select
                     value={formData.usuario_id}
@@ -472,15 +533,36 @@ export const LeadersManagementView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Matrícula</label>
-                  <input
-                    type="text"
-                    value={formData.matricula}
-                    onChange={(e) => setFormData({ ...formData, matricula: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                  />
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Projetos Vinculados (Multi-seleção)
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-gray-50/50">
+                    {projects.length === 0 ? (
+                      <span className="text-xs text-gray-400">Nenhum projeto cadastrado</span>
+                    ) : (
+                      projects.map((p) => {
+                        const isChecked = formData.projetos_ids.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
+                              isChecked ? 'bg-[#355C7D]/10 text-[#355C7D] font-semibold' : 'hover:bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleProject(p.id)}
+                              className="rounded border-gray-300 text-[#355C7D] focus:ring-0"
+                            />
+                            <span>{p.nome}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -492,9 +574,42 @@ export const LeadersManagementView: React.FC = () => {
                     className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
                   />
                 </div>
+              </div>
 
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Gestor(es) Imediato(s) (Multi-seleção - Apenas perfil GERÊNCIA)
+                </label>
+                <div className="border border-gray-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-gray-50/50">
+                  {gerenciaUsers.length === 0 ? (
+                    <span className="text-xs text-amber-600 font-medium">Nenhum usuário com perfil GERÊNCIA cadastrado.</span>
+                  ) : (
+                    gerenciaUsers.map((u) => {
+                      const isChecked = formData.gestores_imediatos_ids.includes(u.id);
+                      return (
+                        <label
+                          key={u.id}
+                          className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
+                            isChecked ? 'bg-[#C76B4A]/10 text-[#C76B4A] font-semibold' : 'hover:bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleGestor(u.id)}
+                            className="rounded border-gray-300 text-[#C76B4A] focus:ring-0"
+                          />
+                          <span>{u.nome} ({u.email})</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Telefone</label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Telefone (Opcional)</label>
                   <input
                     type="text"
                     value={formData.telefone}
@@ -502,24 +617,6 @@ export const LeadersManagementView: React.FC = () => {
                     placeholder="(11) 98888-7777"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Unidade de Lotação</label>
-                  <select
-                    value={formData.unidade_id}
-                    onChange={(e) => setFormData({ ...formData, unidade_id: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                  >
-                    <option value="">Sem unidade fixa</option>
-                    {units.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome} ({u.codigo})
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 <div>
@@ -533,28 +630,6 @@ export const LeadersManagementView: React.FC = () => {
                     <option value="INATIVO">Inativo</option>
                     <option value="AFASTADO">Afastado (Férias/Licença)</option>
                   </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Regional</label>
-                  <input
-                    type="text"
-                    value={formData.regional}
-                    onChange={(e) => setFormData({ ...formData, regional: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Gestor Imediato</label>
-                  <input
-                    type="text"
-                    value={formData.gestor}
-                    onChange={(e) => setFormData({ ...formData, gestor: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                  />
                 </div>
               </div>
 
@@ -615,11 +690,6 @@ export const LeadersManagementView: React.FC = () => {
           </div>
         </div>
       )}
-
-      <UnitsManagementModal
-        isOpen={unitsModalOpen}
-        onClose={() => setUnitsModalOpen(false)}
-      />
     </div>
   );
 };

@@ -8,6 +8,7 @@ import {
   User,
   Users,
   Briefcase,
+  FolderKanban,
   ClipboardList,
   BarChart3,
   CalendarDays,
@@ -25,6 +26,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile }) => {
   const { currentUser, activeTab, setActiveTab, logout } = useAuth();
   const isAdmin = currentUser?.role === 'ADMINISTRADOR';
+  const isGerencia = currentUser?.role === 'GERENCIA';
+  const hasManagementAccess = isAdmin || isGerencia;
 
   const leaderNavItems: { id: NavigationTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'inicio', label: 'Início', icon: <Home className="w-4 h-4" /> },
@@ -35,14 +38,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile })
     { id: 'meu-perfil', label: 'Meu Perfil', icon: <User className="w-4 h-4" /> },
   ];
 
-  const adminNavItems: { id: NavigationTab; label: string; icon: React.ReactNode; count?: number }[] = [
+  const rawAdminNavItems: { id: NavigationTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'admin-usuarios', label: 'Usuários', icon: <Users className="w-4 h-4" /> },
     { id: 'admin-lideres', label: 'Líderes', icon: <Briefcase className="w-4 h-4" /> },
+    { id: 'admin-projetos', label: 'Projetos', icon: <FolderKanban className="w-4 h-4" /> },
     { id: 'admin-tarefas', label: 'Tarefas / OS', icon: <ClipboardList className="w-4 h-4" /> },
     { id: 'admin-metas', label: 'Metas', icon: <Target className="w-4 h-4" /> },
     { id: 'admin-relatorios', label: 'Relatórios', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'admin-calendario', label: 'Calendário', icon: <CalendarDays className="w-4 h-4" /> },
   ];
+
+  // GERENCIA profile is restricted from Usuários, Líderes, Projetos, Metas in Administration
+  const adminNavItems = isGerencia
+    ? rawAdminNavItems.filter(
+        (item) =>
+          item.id !== 'admin-usuarios' &&
+          item.id !== 'admin-lideres' &&
+          item.id !== 'admin-projetos' &&
+          item.id !== 'admin-metas'
+      )
+    : rawAdminNavItems;
 
   const handleItemClick = (tab: NavigationTab) => {
     setActiveTab(tab);
@@ -76,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile })
                 Central <span className="text-[#C76B4A]">Líder</span>
               </span>
               <span className="text-[10px] text-gray-400 font-medium tracking-wide block mt-1">
-                {isAdmin ? 'Painel Administrativo' : 'Portal de Operações'}
+                {isAdmin ? 'Painel Administrativo' : isGerencia ? 'Painel de Gerência' : 'Portal de Operações'}
               </span>
             </div>
           </div>
@@ -133,12 +148,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile })
               </nav>
             </div>
 
-            {/* 2. Área de Administração (Apenas para ADMINISTRADOR) */}
-            {isAdmin && (
+            {/* 2. Área de Administração & Gestão (Para ADMINISTRADOR e GERÊNCIA) */}
+            {hasManagementAccess && (
               <div className="pt-3 border-t border-gray-200">
                 <div className="px-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
                   <Shield className="w-3 h-3 text-[#C76B4A]" />
-                  <span>Administração</span>
+                  <span>{isAdmin ? 'Administração' : 'Gerência & Gestão'}</span>
                 </div>
 
                 <nav className="space-y-0.5">
@@ -181,7 +196,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile })
                 {currentUser?.nome}
               </span>
               <span className="text-[10px] text-gray-500 leading-tight block mt-0.5">
-                {isAdmin ? 'Administrador' : 'Líder Operacional'}
+                {isAdmin ? 'Administrador' : isGerencia ? 'Gerência' : 'Líder Operacional'}
               </span>
             </div>
             <button

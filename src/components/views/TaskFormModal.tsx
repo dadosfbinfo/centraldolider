@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   TarefaOS,
   TaskPriority,
@@ -9,9 +9,11 @@ import {
   FormularioPergunta,
   Unidade,
   Categoria,
-  Lider
+  Lider,
+  UsuarioPerfil
 } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
+import { useAuth } from '../../context/AuthContext';
 import {
   X,
   Plus,
@@ -29,7 +31,8 @@ import {
   FileUp,
   ListFilter,
   Hash,
-  Sparkles
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react';
 
 interface TaskFormModalProps {
@@ -45,17 +48,22 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   taskToEdit,
   onSaved,
 }) => {
+  const { currentUser } = useAuth();
   const [units, setUnits] = useState<Unidade[]>([]);
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [leaders, setLeaders] = useState<Lider[]>([]);
+  const [validatorUsers, setValidatorUsers] = useState<UsuarioPerfil[]>([]);
 
   // Form Basic Fields
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
+  const [tipoOperacao, setTipoOperacao] = useState('Rotina Operacional');
   const [prioridade, setPrioridade] = useState<TaskPriority>('MEDIA');
   const [categoriaId, setCategoriaId] = useState('');
-  const [unidadeId, setUnidadeId] = useState('');
-  const [responsavelId, setResponsavelId] = useState('');
+  
+  // Multi-select projects & validators
+  const [projetosIds, setProjetosIds] = useState<string[]>([]);
+  const [validadoresIds, setValidadoresIds] = useState<string[]>([]);
 
   // Scheduling & Deadlines
   const [data, setData] = useState('');
@@ -78,21 +86,45 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   // Load select options
   useEffect(() => {
     if (isOpen) {
-      const uList = dbStore.getUnits();
+      let uList = dbStore.getUnits();
       const cList = dbStore.getCategories();
-      const lList = dbStore.getLeaders();
+      let lList = dbStore.getLeaders();
+      const vList = dbStore.getUsers().filter((u) => u.role === 'ADMINISTRADOR' || u.role === 'GERENCIA');
+
+      if (currentUser?.role === 'GERENCIA') {
+        const managedProjectIds = dbStore.getManagedProjectIds(currentUser.id);
+        const managedLeaderIds = dbStore.getManagedLeaderIds(currentUser.id);
+
+        uList = uList.filter((u) => managedProjectIds.has(u.id));
+        lList = lList.filter(
+          (l) => managedLeaderIds.has(l.id) || managedLeaderIds.has(l.usuario_id)
+        );
+      }
 
       setUnits(uList);
       setCategories(cList);
       setLeaders(lList);
+      setValidatorUsers(vList);
 
       if (taskToEdit) {
         setTitulo(taskToEdit.titulo);
         setDescricao(taskToEdit.descricao || '');
+        setTipoOperacao(taskToEdit.tipo_operacao || 'Rotina Operacional');
         setPrioridade(taskToEdit.prioridade);
         setCategoriaId(taskToEdit.categoria_id || (cList[0]?.id || ''));
-        setUnidadeId(taskToEdit.unidade_id || (uList[0]?.id || ''));
-        setResponsavelId(taskToEdit.responsavel_id);
+        
+        const initialProjIds = taskToEdit.projetos_ids && taskToEdit.projetos_ids.length > 0
+          ? taskToEdit.projetos_ids
+          : taskToEdit.unidade_id || taskToEdit.projeto_id
+          ? [taskToEdit.unidade_id || taskToEdit.projeto_id!]
+          : uList[0]?.id ? [uList[0].id] : [];
+        setProjetosIds(initialProjIds);
+
+        const initialValIds = taskToEdit.validadores_ids && taskToEdit.validadores_ids.length > 0
+          ? taskToEdit.validadores_ids
+          : vList.map((v) => v.id);
+        setValidadoresIds(initialValIds);
+
         setData(taskToEdit.data);
         setHorario(taskToEdit.horario || '08:00');
         setPrazo(taskToEdit.prazo || '');
@@ -106,16 +138,16 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
         setTitulo('');
         setDescricao('');
+        setTipoOperacao('Rotina Operacional');
         setPrioridade('ALTA');
         setCategoriaId(cList[0]?.id || '');
-        setUnidadeId(uList[0]?.id || '');
-        setResponsavelId(lList[0]?.usuario_id || '');
+        setProjetosIds(uList[0]?.id ? [uList[0].id] : []);
+        setValidadoresIds(vList.map((v) => v.id));
         setData(todayStr);
         setHorario('08:00');
         setPrazo(defaultDeadline.toISOString().slice(0, 16));
         setRecorrencia('UMA_VEZ');
         setDiasSemana([1, 2, 3, 4, 5]);
-        // Default requirement
         setRequisitos([
           {
             id: 'req-' + Date.now().toString(36),
@@ -132,27 +164,46 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       }
       setErrorMessage('');
     }
-  }, [isOpen, taskToEdit]);
+  }, [isOpen, taskToEdit, currentUser]);
+
+  // Calculate automatically identified leaders based on selected projects and user profile
+  const autoIdentifiedLeaders = useMemo(() => {
+    let matched = leaders;
+    if (projetosIds.length > 0) {
+      matched = leaders.filter((l) => {
+        const leaderProjIds = l.projetos_ids && l.projetos_ids.length > 0
+          ? l.projetos_ids
+          : [l.unidade_id || (l as any).projeto_id].filter(Boolean);
+        return leaderProjIds.some((id) => projetosIds.includes(id as string));
+      });
+    }
+
+    // GERÊNCIA restriction: can ONLY manage/create OS for leaders managed by this GERENCIA user (Gestor Imediato)
+    if (currentUser?.role === 'GERENCIA') {
+      matched = matched.filter((l) => {
+        if (l.gestores_imediatos_ids && l.gestores_imediatos_ids.length > 0) {
+          return l.gestores_imediatos_ids.includes(currentUser.id);
+        }
+        return false;
+      });
+    }
+
+    return matched;
+  }, [leaders, projetosIds, currentUser]);
+
+  const handleToggleProject = (projId: string) => {
+    setProjetosIds((prev) =>
+      prev.includes(projId) ? prev.filter((id) => id !== projId) : [...prev, projId]
+    );
+  };
+
+  const handleToggleValidator = (valUserId: string) => {
+    setValidadoresIds((prev) =>
+      prev.includes(valUserId) ? prev.filter((id) => id !== valUserId) : [...prev, valUserId]
+    );
+  };
 
   if (!isOpen) return null;
-
-  // Auto-sync leader when unit changes (if leader matches)
-  const handleUnitChange = (newUnitId: string) => {
-    setUnidadeId(newUnitId);
-    const matchingLeader = leaders.find((l) => l.unidade_id === newUnitId);
-    if (matchingLeader) {
-      setResponsavelId(matchingLeader.usuario_id);
-    }
-  };
-
-  // Auto-sync unit when leader changes
-  const handleLeaderChange = (newLeaderUserId: string) => {
-    setResponsavelId(newLeaderUserId);
-    const leaderObj = leaders.find((l) => l.usuario_id === newLeaderUserId);
-    if (leaderObj?.unidade_id) {
-      setUnidadeId(leaderObj.unidade_id);
-    }
-  };
 
   // Quick deadline shortcuts
   const applyQuickDeadline = (hoursToAdd: number) => {
@@ -335,46 +386,132 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       return;
     }
 
+    if (projetosIds.length === 0) {
+      setErrorMessage('Selecione pelo menos um projeto para vincular a esta OS.');
+      return;
+    }
+
+    if (currentUser?.role === 'GERENCIA' && autoIdentifiedLeaders.length === 0) {
+      setErrorMessage('A criação de OS para o perfil GERÊNCIA é restrita aos Líderes sob sua gestão direta (Gestor Imediato). Nenhum líder sob sua gestão está vinculado a estes projetos.');
+      return;
+    }
+
     const selectedCategory = categories.find((c) => c.id === categoriaId);
-    const selectedUnit = units.find((u) => u.id === unidadeId);
-    const selectedLeader = leaders.find((l) => l.usuario_id === responsavelId);
 
     if (requisitos.length === 0) {
       setErrorMessage('Adicione pelo menos um requisito de conclusão / evidência para a OS.');
       return;
     }
 
+    const selectedProjObjs = units.filter((u) => projetosIds.includes(u.id));
+    const selectedProjNames = selectedProjObjs.map((p) => p.nome);
+    const primaryProj = selectedProjObjs[0];
+
+    const leaderIds = autoIdentifiedLeaders.map((l) => l.usuario_id || l.id);
+    const leaderNames = autoIdentifiedLeaders.map((l) => l.nome);
+    const primaryLeader = autoIdentifiedLeaders[0];
+
+    const selectedValObjs = validatorUsers.filter((v) => validadoresIds.includes(v.id));
+    const valNames = selectedValObjs.map((v) => v.nome);
+
     try {
-      let savedTask: TarefaOS;
-
-      const payload = {
-        titulo: titulo.trim(),
-        descricao: descricao.trim() || undefined,
-        prioridade,
-        categoria_id: categoriaId,
-        categoria_nome: selectedCategory?.nome || 'Operacional',
-        categoria_cor: selectedCategory?.cor || '#C76B4A',
-        unidade_id: unidadeId,
-        unidade: selectedUnit?.nome || 'Matriz Geral',
-        responsavel_id: responsavelId,
-        responsavel_nome: selectedLeader?.nome || 'Mariana Costa',
-        responsavel_cargo: selectedLeader?.cargo || 'Gerente de Unidade',
-        data,
-        horario,
-        prazo: prazo || undefined,
-        status: taskToEdit ? taskToEdit.status : ('PROGRAMADA' as const),
-        recorrencia,
-        recorrencia_config: recorrencia === 'PERSONALIZADA' ? { dias_semana: diasSemana, horario_custom: horario } : undefined,
-        requisitos_conclusao: requisitos,
-      };
-
       if (taskToEdit) {
-        savedTask = dbStore.updateTask(taskToEdit.id, payload);
+        const payload = {
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || undefined,
+          tipo_operacao: tipoOperacao,
+          prioridade,
+          categoria_id: categoriaId,
+          categoria_nome: selectedCategory?.nome || 'Operacional',
+          categoria_cor: selectedCategory?.cor || '#C76B4A',
+          unidade_id: primaryProj?.id,
+          unidade: primaryProj?.nome || 'Projeto Principal',
+          projeto_id: primaryProj?.id,
+          projeto: primaryProj?.nome || 'Projeto Principal',
+          projetos_ids: projetosIds,
+          projetos_nomes: selectedProjNames,
+          responsavel_id: primaryLeader?.usuario_id || primaryLeader?.id || 'usr-lider',
+          responsavel_nome: primaryLeader?.nome || 'Líder Operacional',
+          responsavel_cargo: primaryLeader?.cargo || 'Líder Operacional',
+          lideres_ids: leaderIds,
+          lideres_nomes: leaderNames,
+          validadores_ids: validadoresIds,
+          validadores_nomes: valNames,
+          data,
+          horario,
+          prazo: prazo || undefined,
+          status: taskToEdit.status,
+          recorrencia,
+          recorrencia_config: recorrencia === 'PERSONALIZADA' ? { dias_semana: diasSemana, horario_custom: horario } : undefined,
+          requisitos_conclusao: requisitos,
+        };
+
+        const savedTask = dbStore.updateTask(taskToEdit.id, payload);
+        if (onSaved) onSaved(savedTask);
       } else {
-        savedTask = dbStore.createTask(payload);
+        const payload = {
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || undefined,
+          tipo_operacao: tipoOperacao,
+          prioridade,
+          categoria_id: categoriaId,
+          categoria_nome: selectedCategory?.nome || 'Operacional',
+          categoria_cor: selectedCategory?.cor || '#C76B4A',
+          unidade_id: primaryProj?.id,
+          unidade: primaryProj?.nome || 'Projeto Principal',
+          projeto_id: primaryProj?.id,
+          projeto: primaryProj?.nome || 'Projeto Principal',
+          projetos_ids: projetosIds,
+          projetos_nomes: selectedProjNames,
+          responsavel_id: primaryLeader?.usuario_id || primaryLeader?.id || 'usr-lider',
+          responsavel_nome: primaryLeader?.nome || 'Líder Operacional',
+          responsavel_cargo: primaryLeader?.cargo || 'Líder Operacional',
+          lideres_ids: leaderIds,
+          lideres_nomes: leaderNames,
+          validadores_ids: validadoresIds,
+          validadores_nomes: valNames,
+          data,
+          horario,
+          prazo: prazo || undefined,
+          status: 'PROGRAMADA' as const,
+          recorrencia,
+          recorrencia_config: recorrencia === 'PERSONALIZADA' ? { dias_semana: diasSemana, horario_custom: horario } : undefined,
+          requisitos_conclusao: requisitos,
+        };
+
+        if (autoIdentifiedLeaders.length > 1) {
+          let firstSaved: TarefaOS | null = null;
+          autoIdentifiedLeaders.forEach((leader) => {
+            const leaderProjIds = leader.projetos_ids && leader.projetos_ids.length > 0
+              ? leader.projetos_ids
+              : [leader.unidade_id || (leader as any).projeto_id].filter(Boolean);
+            const matchedProj = units.find((u) => leaderProjIds.includes(u.id)) || primaryProj;
+
+            const leaderPayload = {
+              ...payload,
+              unidade_id: matchedProj?.id,
+              unidade: matchedProj?.nome || 'Projeto Principal',
+              projeto_id: matchedProj?.id,
+              projeto: matchedProj?.nome || 'Projeto Principal',
+              projetos_ids: [matchedProj?.id || primaryProj.id],
+              projetos_nomes: [matchedProj?.nome || primaryProj.nome],
+              responsavel_id: leader.usuario_id || leader.id,
+              responsavel_nome: leader.nome,
+              responsavel_cargo: leader.cargo || 'Líder Operacional',
+              lideres_ids: [leader.usuario_id || leader.id],
+              lideres_nomes: [leader.nome],
+            };
+
+            const saved = dbStore.createTask(leaderPayload);
+            if (!firstSaved) firstSaved = saved;
+          });
+          if (onSaved && firstSaved) onSaved(firstSaved);
+        } else {
+          const savedTask = dbStore.createTask(payload);
+          if (onSaved) onSaved(savedTask);
+        }
       }
 
-      if (onSaved) onSaved(savedTask);
       onClose();
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao salvar Ordem de Serviço.');
@@ -449,6 +586,25 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Tipo da Operação
+                </label>
+                <select
+                  value={tipoOperacao}
+                  onChange={(e) => setTipoOperacao(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                >
+                  <option value="Rotina Operacional">Rotina Operacional</option>
+                  <option value="Preventiva">Preventiva</option>
+                  <option value="Corretiva">Corretiva</option>
+                  <option value="Inspeção">Inspeção</option>
+                  <option value="Auditoria">Auditoria</option>
+                  <option value="Treinamento">Treinamento</option>
+                  <option value="Outros">Outros</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
                   Prioridade Operacional
                 </label>
                 <select
@@ -483,7 +639,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                 <select
                   value={categoriaId}
                   onChange={(e) => setCategoriaId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                  className="w-full px-3 py-2.5 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -493,38 +649,92 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Unidade Operacional
-                </label>
-                <select
-                  value={unidadeId}
-                  onChange={(e) => handleUnitChange(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                >
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Multi-Project & Auto Leader Identification */}
+              <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Projeto(s) Vinculado(s) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-gray-50">
+                    {units.length === 0 ? (
+                      <span className="text-xs text-stone-400">Nenhum projeto cadastrado</span>
+                    ) : (
+                      units.map((u) => {
+                        const isChecked = projetosIds.includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
+                              isChecked ? 'bg-[#C76B4A]/10 text-[#C76B4A] font-bold' : 'hover:bg-gray-100 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleProject(u.id)}
+                              className="rounded border-gray-300 text-[#C76B4A] focus:ring-0"
+                            />
+                            <span>{u.nome}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Líder Responsável Designado
-                </label>
-                <select
-                  value={responsavelId}
-                  onChange={(e) => handleLeaderChange(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                >
-                  {leaders.map((l) => (
-                    <option key={l.id} value={l.usuario_id}>
-                      {l.nome} ({l.cargo || 'Líder'})
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Líder(es) Responsável(is) Identificado(s)
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1 bg-emerald-50/50">
+                    <p className="text-[10px] text-emerald-800 font-medium mb-1">
+                      Atribuído(s) automaticamente com base no(s) projeto(s):
+                    </p>
+                    {autoIdentifiedLeaders.length === 0 ? (
+                      <span className="text-xs text-amber-700 font-semibold block">Nenhum líder associado encontrado</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {autoIdentifiedLeaders.map((l) => (
+                          <span key={l.id} className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-bold text-[11px] border border-emerald-200">
+                            {l.nome}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#C76B4A]" />
+                    Validadores da OS (ADMINISTRADOR / GERÊNCIA)
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1.5 bg-gray-50">
+                    {validatorUsers.length === 0 ? (
+                      <span className="text-xs text-stone-400">Nenhum validador cadastrado</span>
+                    ) : (
+                      validatorUsers.map((v) => {
+                        const isChecked = validadoresIds.includes(v.id);
+                        return (
+                          <label
+                            key={v.id}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
+                              isChecked ? 'bg-[#C76B4A]/10 text-[#C76B4A] font-bold' : 'hover:bg-gray-100 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleValidator(v.id)}
+                              className="rounded border-gray-300 text-[#C76B4A] focus:ring-0"
+                            />
+                            <span>{v.nome} ({v.role})</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -547,6 +757,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                   <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="date"
+                    min={new Date().toISOString().split('T')[0]}
                     value={data}
                     onChange={(e) => setData(e.target.value)}
                     required
@@ -576,6 +787,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                 </label>
                 <input
                   type="datetime-local"
+                  min={new Date().toISOString().slice(0, 16)}
                   value={prazo}
                   onChange={(e) => setPrazo(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"

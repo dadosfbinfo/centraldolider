@@ -6,7 +6,7 @@ import {
   Shield,
   UserCheck,
   Mail,
-  Building2,
+  FolderKanban,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -22,12 +22,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dbStore } from '../../services/dbStore';
-import { UsuarioPerfil, UserRole, ConfirmationStatus, Unidade } from '../../types/database';
+import { UsuarioPerfil, UserRole, ConfirmationStatus, Projeto } from '../../types/database';
 
 export const UsersManagementView: React.FC = () => {
-  const { currentUser, updateUserRole, allUsers } = useAuth();
+  const { user: currentUser, updateUserRole } = useAuth();
   const [users, setUsers] = useState<UsuarioPerfil[]>([]);
-  const [units, setUnits] = useState<Unidade[]>([]);
+  const [projects, setProjects] = useState<Projeto[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConfirmationStatus>('ALL');
@@ -40,7 +40,7 @@ export const UsersManagementView: React.FC = () => {
     email: '',
     senha: 'Lider@123',
     role: 'LIDER' as UserRole,
-    unidade_id: '',
+    projeto_id: '',
     cargo: 'Líder Operacional',
     telefone: '',
   });
@@ -50,7 +50,7 @@ export const UsersManagementView: React.FC = () => {
 
   const loadData = () => {
     setUsers(dbStore.getUsers());
-    setUnits(dbStore.getUnits());
+    setProjects(dbStore.getUnits());
   };
 
   useEffect(() => {
@@ -121,7 +121,7 @@ export const UsersManagementView: React.FC = () => {
         email: newUserData.email.trim().toLowerCase(),
         senha: newUserData.senha,
         role: newUserData.role,
-        unidade_id: newUserData.unidade_id || undefined,
+        unidade_id: newUserData.projeto_id || undefined,
         cargo: newUserData.cargo,
         telefone: newUserData.telefone,
       });
@@ -133,7 +133,7 @@ export const UsersManagementView: React.FC = () => {
         email: '',
         senha: 'Lider@123',
         role: 'LIDER',
-        unidade_id: '',
+        projeto_id: '',
         cargo: 'Líder Operacional',
         telefone: '',
       });
@@ -156,45 +156,31 @@ export const UsersManagementView: React.FC = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const totalAdmins = users.filter((u) => u.role === 'ADMINISTRADOR').length;
-  const totalLeaders = users.filter((u) => u.role === 'LIDER').length;
-  const totalPending = users.filter((u) => u.status_confirmacao === 'PENDENTE').length;
-
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-gray-200 shadow-xs">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-[#fcf1ec] text-[#C76B4A] text-xs font-bold mb-1.5">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Módulo Administrativo (Exclusivo Administrador)
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#C76B4A]/10 text-[#C76B4A] flex items-center justify-center font-bold">
+            <Users className="w-6 h-6" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#343A40]">Gestão de Usuários & Perfis</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Controle de acessos, alteração de função (Admin/Líder) e monitoramento de ativação
-          </p>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+              Gestão de Usuários
+            </h1>
+            <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
+              Administre os acessos, permissões e status de ativação de administradores e líderes
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 shrink-0">
-            <div className="px-3 py-1.5 rounded-2xl bg-gray-50 border border-gray-200 text-center">
-              <span className="text-[10px] uppercase font-bold text-gray-500 block">Total</span>
-              <span className="text-sm font-extrabold text-[#343A40]">{users.length}</span>
-            </div>
-            <div className="px-3 py-1.5 rounded-2xl bg-[#ebf3f8] border border-[#355C7D]/20 text-center">
-              <span className="text-[10px] uppercase font-bold text-[#355C7D] block">Líderes</span>
-              <span className="text-sm font-extrabold text-[#355C7D]">{totalLeaders}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setCreateUserModalOpen(true)}
-            className="px-4 py-2.5 bg-[#C76B4A] hover:bg-[#b05838] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Novo Usuário
-          </button>
-        </div>
+        <button
+          onClick={() => setCreateUserModalOpen(true)}
+          className="px-5 py-2.5 bg-[#C76B4A] hover:bg-[#b05838] text-white text-xs font-bold rounded-xl shadow-xs transition inline-flex items-center gap-2 shrink-0"
+        >
+          <UserPlus className="w-4 h-4" />
+          Novo Usuário
+        </button>
       </div>
 
       {/* Action Notification Banner */}
@@ -206,30 +192,29 @@ export const UsersManagementView: React.FC = () => {
       )}
 
       {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-        {/* Search */}
+      <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3.5 top-3 text-gray-400" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nome, e-mail ou unidade..."
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-gray-200 text-[#343A40] placeholder-gray-400 focus:outline-hidden focus:border-[#C76B4A]"
+            placeholder="Buscar por nome, e-mail ou projeto..."
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-stone-200 text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
           />
         </div>
 
-        {/* Dropdown Filters */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5 text-xs text-stone-500">
             <Filter className="w-3.5 h-3.5" />
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as any)}
-              className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs text-[#343A40] font-medium outline-hidden focus:border-[#C76B4A]"
+              className="px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 text-xs text-stone-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
             >
               <option value="ALL">Todos os Papéis</option>
               <option value="ADMINISTRADOR">Administrador</option>
+              <option value="GERENCIA">Gerência</option>
               <option value="LIDER">Líder</option>
             </select>
           </div>
@@ -237,7 +222,7 @@ export const UsersManagementView: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs text-[#343A40] font-medium outline-hidden focus:border-[#C76B4A]"
+            className="px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 text-xs text-stone-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
           >
             <option value="ALL">Todos os Status</option>
             <option value="CONFIRMADO">Confirmados</option>
@@ -247,23 +232,23 @@ export const UsersManagementView: React.FC = () => {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-3xl border border-stone-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-gray-200 bg-[#fcfaf8] text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-black text-stone-500 uppercase tracking-wider">
                 <th className="px-6 py-4">Usuário</th>
                 <th className="px-6 py-4">Papel / Função</th>
                 <th className="px-6 py-4">Status de Confirmação</th>
-                <th className="px-6 py-4">Unidade</th>
+                <th className="px-6 py-4">Projeto</th>
                 <th className="px-6 py-4">Cadastrado em</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 text-xs">
+            <tbody className="divide-y divide-stone-100 text-xs">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-12 text-center text-stone-400">
                     Nenhum usuário encontrado com os filtros selecionados.
                   </td>
                 </tr>
@@ -275,14 +260,14 @@ export const UsersManagementView: React.FC = () => {
                   return (
                     <tr
                       key={u.id}
-                      className={`hover:bg-gray-50/80 transition-colors ${
-                        isCurrent ? 'bg-[#fcf1ec]/20' : ''
+                      className={`hover:bg-stone-50/80 transition-colors ${
+                        isCurrent ? 'bg-orange-50/30' : ''
                       }`}
                     >
                       {/* Name & Email */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#355C7D] to-[#C76B4A] text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-stone-800 to-[#C76B4A] text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
                             {u.nome
                               .split(' ')
                               .map((n) => n[0])
@@ -292,15 +277,15 @@ export const UsersManagementView: React.FC = () => {
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#343A40]">{u.nome}</span>
+                              <span className="font-bold text-stone-900">{u.nome}</span>
                               {isCurrent && (
-                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-[#C76B4A] text-white">
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-[#C76B4A] text-white">
                                   Você
                                 </span>
                               )}
                             </div>
-                            <span className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
-                              <Mail className="w-3 h-3 text-gray-400" />
+                            <span className="text-[11px] text-stone-500 flex items-center gap-1 mt-0.5">
+                              <Mail className="w-3 h-3 text-stone-400" />
                               {u.email}
                             </span>
                           </div>
@@ -309,13 +294,17 @@ export const UsersManagementView: React.FC = () => {
 
                       {/* Role */}
                       <td className="px-6 py-4">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border">
+                        <div className="inline-flex items-center gap-1.5 text-xs font-bold">
                           {u.role === 'ADMINISTRADOR' ? (
-                            <span className="bg-[#fcf1ec] text-[#C76B4A] border border-[#f2caba] px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="bg-orange-50 text-[#C76B4A] border border-orange-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                               <Shield className="w-3 h-3" /> Administrador
                             </span>
+                          ) : u.role === 'GERENCIA' ? (
+                            <span className="bg-blue-50 text-[#355C7D] border border-blue-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> Gerência
+                            </span>
                           ) : (
-                            <span className="bg-[#edf3fc] text-[#5B7DBE] border border-[#dfeaf8] px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="bg-stone-100 text-stone-800 border border-stone-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                               <UserCheck className="w-3 h-3" /> Líder Operacional
                             </span>
                           )}
@@ -342,10 +331,10 @@ export const UsersManagementView: React.FC = () => {
                               >
                                 Ativar Manual
                               </button>
-                              <span className="text-gray-300">•</span>
+                              <span className="text-stone-300">•</span>
                               <button
                                 onClick={() => handleResendActivation(u)}
-                                className="text-[10px] text-gray-500 hover:text-gray-700 font-medium"
+                                className="text-[10px] text-stone-500 hover:text-stone-700 font-medium"
                               >
                                 Reenviar e-mail
                               </button>
@@ -354,40 +343,59 @@ export const UsersManagementView: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Unit */}
+                      {/* Project */}
                       <td className="px-6 py-4">
                         <div className="text-xs">
                           {u.unidade_nome ? (
-                            <span className="font-semibold text-[#343A40] flex items-center gap-1">
-                              <Building2 className="w-3.5 h-3.5 text-[#8B6B4A]" />
+                            <span className="font-semibold text-stone-800 flex items-center gap-1">
+                              <FolderKanban className="w-3.5 h-3.5 text-[#C76B4A]" />
                               {u.unidade_nome}
                             </span>
                           ) : (
-                            <span className="text-gray-400">Geral / Matriz</span>
+                            <span className="text-stone-400">Geral / Matriz</span>
                           )}
                         </div>
                       </td>
 
                       {/* Date */}
-                      <td className="px-6 py-4 text-[11px] text-gray-500">
+                      <td className="px-6 py-4 text-[11px] text-stone-500">
                         {new Date(u.created_at || Date.now()).toLocaleDateString('pt-BR')}
                       </td>
 
                       {/* Actions */}
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleToggleRole(u)}
-                            className="px-2.5 py-1 rounded-xl border border-gray-200 hover:bg-gray-100 text-[#343A40] text-[11px] font-semibold transition"
-                            title="Alternar função entre Administrador e Líder"
+                        <div className="flex items-center justify-end gap-2">
+                          <select
+                            value={u.role}
+                            onChange={async (e) => {
+                              const newRole = e.target.value as UserRole;
+                              try {
+                                await updateUserRole(u.id, newRole);
+                                const roleLabel =
+                                  newRole === 'ADMINISTRADOR'
+                                    ? 'Administrador'
+                                    : newRole === 'GERENCIA'
+                                    ? 'Gerência'
+                                    : 'Líder Operacional';
+                                setActionMessage(`Função de ${u.nome} alterada para ${roleLabel}.`);
+                                setTimeout(() => setActionMessage(null), 4000);
+                                loadData();
+                              } catch (err: any) {
+                                alert(err.message || 'Erro ao alterar função');
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-800 text-[11px] font-bold transition focus:outline-hidden focus:ring-2 focus:ring-[#C76B4A]"
+                            title="Alterar função do usuário"
                           >
-                            Trocar para {u.role === 'ADMINISTRADOR' ? 'Líder' : 'Admin'}
-                          </button>
+                            <option value="LIDER">Líder</option>
+                            <option value="GERENCIA">Gerência</option>
+                            <option value="ADMINISTRADOR">Admin</option>
+                          </select>
 
                           {!isCurrent && (
                             <button
                               onClick={() => setUserToDelete(u)}
-                              className="p-1.5 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                              className="p-1.5 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition"
                               title="Excluir usuário"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -406,23 +414,23 @@ export const UsersManagementView: React.FC = () => {
 
       {/* Create User Modal */}
       {createUserModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-4">
+        <div className="fixed inset-0 bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-4 mb-4">
               <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-xl bg-[#C76B4A]/10 text-[#C76B4A]">
                   <UserPlus className="w-5 h-5" />
                 </span>
                 <div>
-                  <h3 className="font-bold text-base text-[#343A40]">Cadastrar Novo Usuário</h3>
-                  <p className="text-xs text-gray-500">
+                  <h3 className="font-bold text-base text-stone-900">Cadastrar Novo Usuário</h3>
+                  <p className="text-xs text-stone-500">
                     Crie credenciais de acesso para administrador ou líder
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setCreateUserModalOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                className="p-1.5 text-stone-400 hover:text-stone-600 rounded-lg hover:bg-stone-100"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -430,53 +438,54 @@ export const UsersManagementView: React.FC = () => {
 
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Nome Completo *</label>
+                <label className="block text-xs font-bold text-stone-700 mb-1">Nome Completo *</label>
                 <input
                   type="text"
                   required
                   placeholder="Ex: Carlos Eduardo"
                   value={newUserData.nome}
                   onChange={(e) => setNewUserData({ ...newUserData, nome: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">E-mail Corporativo *</label>
+                <label className="block text-xs font-bold text-stone-700 mb-1">E-mail Corporativo *</label>
                 <input
                   type="email"
                   required
                   placeholder="carlos@empresa.com.br"
                   value={newUserData.email}
                   onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Papel de Acesso</label>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Papel de Acesso</label>
                   <select
                     value={newUserData.role}
                     onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value as UserRole })}
-                    className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                   >
                     <option value="LIDER">Líder Operacional</option>
+                    <option value="GERENCIA">Gerência</option>
                     <option value="ADMINISTRADOR">Administrador</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Unidade</label>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Projeto</label>
                   <select
-                    value={newUserData.unidade_id}
-                    onChange={(e) => setNewUserData({ ...newUserData, unidade_id: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                    value={newUserData.projeto_id}
+                    onChange={(e) => setNewUserData({ ...newUserData, projeto_id: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                   >
-                    <option value="">Geral / Sem unidade fixa</option>
-                    {units.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome}
+                    <option value="">Geral / Sem projeto fixo</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nome}
                       </option>
                     ))}
                   </select>
@@ -485,50 +494,49 @@ export const UsersManagementView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Cargo / Função</label>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Cargo / Função</label>
                   <input
                     type="text"
                     value={newUserData.cargo}
                     onChange={(e) => setNewUserData({ ...newUserData, cargo: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Telefone</label>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Telefone</label>
                   <input
                     type="text"
                     placeholder="(11) 99999-8888"
                     value={newUserData.telefone}
                     onChange={(e) => setNewUserData({ ...newUserData, telefone: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Senha Inicial</label>
+                <label className="block text-xs font-bold text-stone-700 mb-1">Senha Inicial</label>
                 <input
                   type="text"
                   value={newUserData.senha}
                   onChange={(e) => setNewUserData({ ...newUserData, senha: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
                 <button
                   type="button"
                   onClick={() => setCreateUserModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-[#C76B4A] text-white hover:bg-[#b05838] rounded-xl shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-2 text-xs font-bold bg-[#C76B4A] hover:bg-[#b05838] text-white rounded-xl shadow-xs"
                 >
-                  <Save className="w-4 h-4" />
                   Cadastrar Usuário
                 </button>
               </div>
@@ -537,36 +545,30 @@ export const UsersManagementView: React.FC = () => {
         </div>
       )}
 
-      {/* Delete User Modal */}
+      {/* Delete Confirmation Modal */}
       {userToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-            <div className="flex items-center gap-3 text-red-600">
-              <span className="p-2.5 rounded-2xl bg-red-50">
+        <div className="fixed inset-0 bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200">
+            <div className="text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center font-bold">
                 <AlertCircle className="w-6 h-6" />
-              </span>
-              <div>
-                <h3 className="font-bold text-base text-[#343A40]">Excluir Acesso do Usuário</h3>
-                <p className="text-xs text-gray-500">Essa ação é irreversível</p>
               </div>
+              <h3 className="font-bold text-base text-stone-900">Excluir Usuário</h3>
+              <p className="text-xs text-stone-500">
+                Tem certeza que deseja excluir o usuário <strong>{userToDelete.nome}</strong> ({userToDelete.email})? Esta ação não pode ser desfeita.
+              </p>
             </div>
-
-            <p className="text-xs text-gray-600 leading-relaxed">
-              Tem certeza que deseja remover o usuário <strong>{userToDelete.nome}</strong> ({userToDelete.email})? O login e perfil associados serão excluídos permanentemente.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-center gap-3 pt-6 border-t border-stone-100 mt-5">
               <button
                 onClick={() => setUserToDelete(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-xl"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 text-xs font-bold bg-red-600 text-white hover:bg-red-700 rounded-xl shadow-xs flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs"
               >
-                <Trash2 className="w-4 h-4" />
                 Confirmar Exclusão
               </button>
             </div>

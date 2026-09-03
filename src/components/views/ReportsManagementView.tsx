@@ -13,35 +13,43 @@ import {
   Users,
   Upload,
   Calendar,
-  Building2,
+  FolderKanban,
   X,
   Clock,
   Download,
   BookOpen,
   ShieldCheck,
   FileCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 import { dbStore } from '../../services/dbStore';
 import {
   Relatorio,
   ReportType,
   ReportAudienceType,
-  Unidade,
+  Projeto,
   UsuarioPerfil,
   ConfirmacaoLeituraRelatorio,
 } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
 import { ReportViewerModal } from '../reports/ReportViewerModal';
+import { PeriodFilter, PeriodSelection, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
 
 export const ReportsManagementView: React.FC = () => {
   const { user } = useAuth();
   const [reports, setReports] = useState<Relatorio[]>([]);
-  const [units, setUnits] = useState<Unidade[]>([]);
+  const [projects, setProjects] = useState<Projeto[]>([]);
   const [leaders, setLeaders] = useState<UsuarioPerfil[]>([]);
 
   // Filter states
   const [selectedType, setSelectedType] = useState<ReportType | 'TODOS'>('TODOS');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('TODOS');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [period, setPeriod] = useState<PeriodFilterValue>({
+    mode: 'TODOS',
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  });
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
@@ -49,7 +57,7 @@ export const ReportsManagementView: React.FC = () => {
   const [viewingReport, setViewingReport] = useState<Relatorio | null>(null);
   const [confirmationsModalReport, setConfirmationsModalReport] = useState<Relatorio | null>(null);
 
-  // Form states
+  // Form states (PDF ONLY)
   const [formData, setFormData] = useState({
     titulo: '',
     tipo: 'MENSAL' as ReportType,
@@ -60,15 +68,21 @@ export const ReportsManagementView: React.FC = () => {
     unidades_alvo: [] as string[],
     lideres_alvo: [] as string[],
     descricao: '',
-    arquivo_pdf_nome: 'Relatorio_Setembro_2026.pdf',
-    arquivo_pdf_tamanho: '2.5 MB',
-    arquivo_pdf_conteudo: '',
+    arquivo_pdf_nome: 'Relatorio_Operacional_Setembro_2026.pdf',
+    arquivo_pdf_tamanho: '2.4 MB',
+    arquivo_pdf_url: '',
+    arquivo_pdf_conteudo: 'Documento Operacional PDF',
   });
 
   const loadData = () => {
-    setReports(dbStore.getReports());
-    setUnits(dbStore.getUnits());
-    setLeaders(dbStore.getUsers().filter((u) => u.role === 'LIDER'));
+    setReports(dbStore.getReportsForUser(user));
+    setProjects(dbStore.getProjects());
+    let allLeaders = dbStore.getUsers().filter((u) => u.role === 'LIDER');
+    if (user?.role === 'GERENCIA') {
+      const managedLeaderIds = dbStore.getManagedLeaderIds(user.id);
+      allLeaders = allLeaders.filter((l) => managedLeaderIds.has(l.id));
+    }
+    setLeaders(allLeaders);
   };
 
   useEffect(() => {
@@ -76,12 +90,12 @@ export const ReportsManagementView: React.FC = () => {
     const unsubscribe = dbStore.subscribe(() => {
       loadData();
       if (confirmationsModalReport) {
-        const fresh = dbStore.getReports().find((r) => r.id === confirmationsModalReport.id);
+        const fresh = dbStore.getReportsForUser(user).find((r) => r.id === confirmationsModalReport.id);
         if (fresh) setConfirmationsModalReport(fresh);
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   const handleOpenCreateModal = () => {
     setEditingReport(null);
@@ -95,18 +109,10 @@ export const ReportsManagementView: React.FC = () => {
       unidades_alvo: [],
       lideres_alvo: [],
       descricao: '',
-      arquivo_pdf_nome: 'Relatorio_Setembro_2026.pdf',
-      arquivo_pdf_tamanho: '2.5 MB',
-      arquivo_pdf_conteudo: `# CENTRAL DO LÍDER — RELATÓRIO OPERACIONAL
-## Período: Setembro / 2026
-
-### 1. OBJETIVO DO DOCUMENTO
-Apresentação das diretrizes e acompanhamento dos indicadores operacionais da rede.
-
-### 2. PRINCIPAIS DESTAQUES
-- Cumprimento de ordens de serviço preventivas
-- Controle de qualidade e vistorias sanitárias
-- Metas de produção e atendimento`,
+      arquivo_pdf_nome: '',
+      arquivo_pdf_tamanho: '',
+      arquivo_pdf_url: '',
+      arquivo_pdf_conteudo: '',
     });
     setIsFormModalOpen(true);
   };
@@ -125,6 +131,7 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
       descricao: report.descricao || '',
       arquivo_pdf_nome: report.arquivo_pdf_nome || 'Relatorio.pdf',
       arquivo_pdf_tamanho: report.arquivo_pdf_tamanho || '2.0 MB',
+      arquivo_pdf_url: report.arquivo_pdf_url || '',
       arquivo_pdf_conteudo: report.arquivo_pdf_conteudo || '',
     });
     setIsFormModalOpen(true);
@@ -140,6 +147,33 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
     }
   };
 
+  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Por favor, selecione exclusivamente um arquivo no formato PDF (.pdf).');
+      return;
+    }
+
+    const sizeStr = file.size > 1024 * 1024
+      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      : `${Math.round(file.size / 1024)} KB`;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = (event.target?.result as string) || '';
+      setFormData((prev) => ({
+        ...prev,
+        arquivo_pdf_nome: file.name,
+        arquivo_pdf_tamanho: sizeStr,
+        arquivo_pdf_url: content,
+        arquivo_pdf_conteudo: content,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmitForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.titulo.trim()) {
@@ -147,7 +181,12 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
       return;
     }
 
-    const payload = {
+    if (!formData.arquivo_pdf_nome) {
+      alert('Por favor, faça o upload do arquivo PDF do relatório.');
+      return;
+    }
+
+    const reportPayload = {
       titulo: formData.titulo.trim(),
       tipo: formData.tipo,
       periodo: formData.periodo.trim(),
@@ -159,13 +198,23 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
       descricao: formData.descricao.trim(),
       arquivo_pdf_nome: formData.arquivo_pdf_nome,
       arquivo_pdf_tamanho: formData.arquivo_pdf_tamanho,
+      arquivo_pdf_url: formData.arquivo_pdf_url,
       arquivo_pdf_conteudo: formData.arquivo_pdf_conteudo,
     };
 
     if (editingReport) {
-      dbStore.updateReport(editingReport.id, payload);
+      dbStore.updateReport(editingReport.id, reportPayload);
     } else {
-      dbStore.createReport(payload);
+      if (formData.publico_tipo === 'LIDERES' && formData.lideres_alvo && formData.lideres_alvo.length > 1) {
+        formData.lideres_alvo.forEach((liderId) => {
+          dbStore.createReport({
+            ...reportPayload,
+            lideres_alvo: [liderId],
+          });
+        });
+      } else {
+        dbStore.createReport(reportPayload);
+      }
     }
 
     setIsFormModalOpen(false);
@@ -173,66 +222,42 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
 
   // Filtered reports
   const filteredReports = useMemo(() => {
-    return reports.filter((r) => {
-      const matchType = selectedType === 'TODOS' || r.tipo === selectedType;
+    return reports.filter((report) => {
+      const matchType = selectedType === 'TODOS' || report.tipo === selectedType;
       const matchSearch =
         searchTerm === '' ||
-        r.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.periodo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (r.descricao && r.descricao.toLowerCase().includes(searchTerm.toLowerCase()));
+        report.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        report.periodo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (report.descricao && report.descricao.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      return matchType && matchSearch;
+      const matchPeriod = isDateInPeriod(report.data_publicacao, period);
+
+      const matchProject =
+        selectedProjectId === 'TODOS' ||
+        (report.unidades_alvo && report.unidades_alvo.includes(selectedProjectId)) ||
+        (report as any).unidade_id === selectedProjectId ||
+        (report as any).projeto_id === selectedProjectId;
+
+      return matchType && matchSearch && matchPeriod && matchProject;
     });
-  }, [reports, selectedType, searchTerm]);
+  }, [reports, selectedType, selectedProjectId, searchTerm, period]);
 
-  // Overall reading statistics
-  const summary = useMemo(() => {
+  // Overall metrics
+  const metrics = useMemo(() => {
     const total = reports.length;
     const published = reports.filter((r) => r.publicado).length;
-    const drafts = total - published;
-    let totalConfirmations = 0;
-    reports.forEach((r) => {
-      totalConfirmations += r.confirmacoes_leitura?.length || 0;
-    });
-
+    const totalConfirmations = reports.reduce((acc, r) => acc + (r.total_leituras || 0), 0);
     return {
       total,
       published,
-      drafts,
+      drafts: total - published,
       totalConfirmations,
     };
   }, [reports]);
 
-  // Calculate target audience & pendencies for the confirmations modal
-  const getConfirmationAudit = (report: Relatorio) => {
-    let eligibleLeaders: UsuarioPerfil[] = [];
-    if (report.publico_tipo === 'TODOS') {
-      eligibleLeaders = leaders;
-    } else if (report.publico_tipo === 'UNIDADES' && report.unidades_alvo) {
-      eligibleLeaders = leaders.filter((l) => l.unidade_id && report.unidades_alvo?.includes(l.unidade_id));
-    } else if (report.publico_tipo === 'LIDERES' && report.lideres_alvo) {
-      eligibleLeaders = leaders.filter((l) => report.lideres_alvo?.includes(l.id));
-    }
-
-    const confirmations = report.confirmacoes_leitura || [];
-    const confirmedLeaderIds = confirmations.map((c) => c.usuario_id);
-
-    const pendingLeaders = eligibleLeaders.filter((l) => !confirmedLeaderIds.includes(l.id));
-
-    return {
-      eligibleLeaders,
-      confirmations,
-      pendingLeaders,
-      confirmationRate:
-        eligibleLeaders.length > 0
-          ? Math.round((confirmations.length / eligibleLeaders.length) * 100)
-          : 0,
-    };
-  };
-
   return (
     <div id="reports-management-view" className="space-y-6 pb-12">
-      {/* Top Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-[#C76B4A] uppercase tracking-wider mb-1">
@@ -240,10 +265,10 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
             <span>Administração Geral</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
-            Gestão de Relatórios & PDFs
+            Gestão de Relatórios Operacionais
           </h1>
           <p className="text-stone-600 text-sm mt-1">
-            Cadastre relatórios diários, semanais e mensais, defina o público de acesso, publique arquivos e acompanhe as confirmações de leitura dos líderes.
+            Faça upload exclusivo de relatórios em PDF, publique para líderes e projetos e acompanhe as confirmações de leitura com carimbo de data e hora.
           </p>
         </div>
 
@@ -253,88 +278,121 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#C76B4A] hover:bg-[#b55e3e] text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0"
         >
           <Plus className="w-4 h-4" />
-          <span>Publicar Novo Relatório</span>
+          <span>Novo Relatório (Upload PDF)</span>
         </button>
       </div>
 
-      {/* Summary Stats */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
+        <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-xs">
           <span className="text-xs font-semibold text-stone-500 block">Total de Relatórios</span>
-          <div className="text-2xl font-black text-stone-900 mt-1">{summary.total}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">No acervo corporativo</span>
+          <div className="text-2xl font-black text-stone-900 mt-1">{metrics.total}</div>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Documentos cadastrados</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
-          <span className="text-xs font-semibold text-stone-500 block">Publicados & Ativos</span>
-          <div className="text-2xl font-black text-emerald-600 mt-1">{summary.published}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Disponíveis para os líderes</span>
+        <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-xs">
+          <span className="text-xs font-semibold text-stone-500 block">Publicados</span>
+          <div className="text-2xl font-black text-emerald-600 mt-1 flex items-center gap-2">
+            {metrics.published}
+          </div>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Visíveis para líderes</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
-          <span className="text-xs font-semibold text-stone-500 block">Rascunhos / Ocultos</span>
-          <div className="text-2xl font-black text-amber-600 mt-1">{summary.drafts}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Não visíveis para a equipe</span>
+        <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-xs">
+          <span className="text-xs font-semibold text-stone-500 block">Rascunhos</span>
+          <div className="text-2xl font-black text-stone-500 mt-1">{metrics.drafts}</div>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Aguardando publicação</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
-          <span className="text-xs font-semibold text-stone-500 block">Leituras Confirmadas</span>
-          <div className="text-2xl font-black text-[#C76B4A] mt-1">{summary.totalConfirmations}</div>
-          <span className="text-[11px] text-stone-600 mt-0.5 block">Registros com carimbo de data</span>
+        <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-xs">
+          <span className="text-xs font-semibold text-stone-500 block">Confirmações de Leitura</span>
+          <div className="text-2xl font-black text-[#C76B4A] mt-1">{metrics.totalConfirmations}</div>
+          <span className="text-[11px] text-stone-600 mt-0.5 block">Assinaturas registradas</span>
         </div>
       </div>
 
-      {/* Filters and Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-stone-200 shadow-xs">
-        {/* Type Tabs */}
-        <div className="flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 overflow-x-auto">
-          {(
-            [
-              { id: 'TODOS', label: 'Todos' },
-              { id: 'DIARIO', label: 'Diários' },
-              { id: 'SEMANAL', label: 'Semanais' },
-              { id: 'MENSAL', label: 'Mensais' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setSelectedType(t.id)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                selectedType === t.id
-                  ? 'bg-white text-stone-900 shadow-xs'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* Period Filter Bar */}
+      <div className="p-3 bg-white rounded-2xl border border-stone-200 shadow-xs flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-900">
+          <Calendar className="w-4 h-4 text-[#C76B4A]" />
+          <span>Filtro de Período da Publicação:</span>
+        </div>
+        <PeriodFilter value={period} onChange={setPeriod} />
+      </div>
+
+      {/* Controls Bar */}
+      <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Type Tabs */}
+          <div className="flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 overflow-x-auto">
+            {(
+              [
+                { id: 'TODOS', label: 'Todos' },
+                { id: 'MENSAL', label: 'Mensais' },
+                { id: 'SEMANAL', label: 'Semanais' },
+                { id: 'TRIMESTRAL', label: 'Trimestrais' },
+                { id: 'EVENTUAL', label: 'Eventuais' },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                id={`filter-report-${t.id.toLowerCase()}`}
+                onClick={() => setSelectedType(t.id)}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  selectedType === t.id
+                    ? 'bg-white text-stone-900 shadow-xs font-bold'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search box */}
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="text"
+              id="input-search-reports"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por título ou período..."
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-200 text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
+            />
+          </div>
         </div>
 
-        {/* Search */}
-        <div className="relative min-w-[220px]">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            type="text"
-            id="input-search-admin-reports"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por título ou período..."
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-200 text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C76B4A]"
-          />
+        {/* Project Filter Dropdown */}
+        <div className="pt-2 border-t border-stone-100 flex items-center gap-2">
+          <label className="text-xs font-semibold text-stone-600 whitespace-nowrap">Filtrar por Projeto:</label>
+          <select
+            id="select-filter-report-project"
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="px-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-200 text-stone-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#C76B4A]"
+          >
+            <option value="TODOS">Todos os Projetos</option>
+            {projects.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nome}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
       {/* Reports Table */}
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-3xl border border-stone-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-stone-800">
             <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 uppercase font-semibold text-[11px]">
               <tr>
-                <th className="px-4 py-3.5">Relatório & Período</th>
-                <th className="px-4 py-3.5">Tipo</th>
-                <th className="px-4 py-3.5">Público de Acesso</th>
-                <th className="px-4 py-3.5">Status Publicação</th>
-                <th className="px-4 py-3.5">Leituras</th>
+                <th className="px-4 py-3.5">Título & Período</th>
+                <th className="px-4 py-3.5">Público-Alvo</th>
+                <th className="px-4 py-3.5">Arquivo PDF</th>
+                <th className="px-4 py-3.5">Status</th>
+                <th className="px-4 py-3.5">Leituras Confirmadas</th>
                 <th className="px-4 py-3.5 text-right">Ações</th>
               </tr>
             </thead>
@@ -342,68 +400,69 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
               {filteredReports.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-stone-500">
-                    Nenhum relatório cadastrado para os filtros selecionados.
+                    Nenhum relatório encontrado para os filtros selecionados.
                   </td>
                 </tr>
               ) : (
                 filteredReports.map((report) => {
-                  const audit = getConfirmationAudit(report);
+                  const confirmations = report.confirmacoes_leitura || [];
                   return (
                     <tr key={report.id} className="hover:bg-stone-50/70 transition-colors">
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-stone-900 text-sm max-w-sm truncate">
-                          {report.titulo}
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                            {report.tipo}
+                          </span>
+                          <strong className="text-stone-900 text-sm">{report.titulo}</strong>
                         </div>
                         <div className="text-[11px] text-stone-600 mt-0.5 flex items-center gap-2">
                           <span>Ref: {report.periodo}</span>
                           <span>•</span>
-                          <span>Pub: {new Date(report.data_publicacao).toLocaleDateString('pt-BR')}</span>
+                          <span>Pub: {report.data_publicacao}</span>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-stone-100 text-stone-600 border border-stone-200">
-                          {report.tipo}
+                      <td className="px-4 py-3.5">
+                        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-stone-100 text-stone-700 border border-stone-200 inline-flex items-center gap-1">
+                          <Users className="w-3 h-3 text-[#C76B4A]" />
+                          {report.publico_tipo === 'TODOS'
+                            ? 'Todos os Líderes'
+                            : report.publico_tipo === 'UNIDADES'
+                            ? `${report.unidades_alvo?.length || 0} Projeto(s)`
+                            : `${report.lideres_alvo?.length || 0} Líder(es)`}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap text-stone-700">
-                        {report.publico_tipo === 'TODOS' ? (
-                          <span className="inline-flex items-center gap-1 font-medium">
-                            <Users className="w-3.5 h-3.5 text-[#C76B4A]" /> Todos os Líderes
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 font-bold text-stone-800">
+                          <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black">
+                            PDF
                           </span>
-                        ) : report.publico_tipo === 'UNIDADES' ? (
-                          <span className="inline-flex items-center gap-1 font-medium">
-                            <Building2 className="w-3.5 h-3.5 text-stone-500" />
-                            {report.unidades_alvo?.length || 0} Unidades
+                          <span className="truncate max-w-[140px]" title={report.arquivo_pdf_nome}>
+                            {report.arquivo_pdf_nome || 'Arquivo.pdf'}
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 font-medium">
-                            <Users className="w-3.5 h-3.5 text-stone-500" />
-                            {report.lideres_alvo?.length || 0} Líderes
+                          <span className="text-[10px] text-stone-600 font-normal">
+                            ({report.arquivo_pdf_tamanho || '1.2 MB'})
                           </span>
-                        )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <button
                           onClick={() => handleTogglePublish(report.id)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
+                          className={`px-2.5 py-1 text-xs font-bold rounded-full border inline-flex items-center gap-1 transition ${
                             report.publicado
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                               : 'bg-stone-100 text-stone-600 border-stone-300 hover:bg-stone-200'
                           }`}
-                          title="Clique para alternar entre Publicado e Rascunho"
                         >
                           {report.publicado ? (
                             <>
-                              <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Publicado</span>
+                              <Eye className="w-3 h-3" /> Publicado
                             </>
                           ) : (
                             <>
-                              <EyeOff className="w-3.5 h-3.5 text-stone-500" />
-                              <span>Rascunho</span>
+                              <EyeOff className="w-3 h-3" /> Rascunho
                             </>
                           )}
                         </button>
@@ -412,13 +471,11 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <button
                           onClick={() => setConfirmationsModalReport(report)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-stone-100 hover:bg-orange-50 text-stone-800 hover:text-orange-950 font-bold rounded-lg border border-stone-200 transition-colors"
-                          title="Clique para ver quem leu e quem está pendente"
+                          className="group inline-flex items-center gap-1.5 px-3 py-1 bg-stone-100 hover:bg-orange-50 text-stone-900 hover:text-orange-950 font-bold rounded-xl border border-stone-200 hover:border-orange-300 transition"
+                          title="Clique para ver lista de quem confirmou leitura"
                         >
-                          <FileCheck className="w-3.5 h-3.5 text-[#C76B4A]" />
-                          <span>
-                            {audit.confirmations.length} / {audit.eligibleLeaders.length}
-                          </span>
+                          <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{confirmations.length} confirmação(ões)</span>
                         </button>
                       </td>
 
@@ -426,21 +483,21 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setViewingReport(report)}
-                            className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                            title="Abrir no Visualizador"
+                            className="p-1.5 text-[#C76B4A] hover:text-[#b55e3e] hover:bg-orange-50 rounded-lg transition"
+                            title="Visualizar Relatório PDF"
                           >
                             <BookOpen className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenEditModal(report)}
-                            className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                            title="Editar Informações"
+                            className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition"
+                            title="Editar Dados do Relatório"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteReport(report.id, report.titulo)}
-                            className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                            className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
                             title="Excluir Relatório"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -456,137 +513,19 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
         </div>
       </div>
 
-      {/* Confirmations Log Modal */}
-      {confirmationsModalReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-stone-200 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
-              <div>
-                <h3 className="text-base font-black text-stone-900">
-                  Rastreabilidade de Leitura
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  {confirmationsModalReport.titulo}
-                </p>
-              </div>
-              <button
-                onClick={() => setConfirmationsModalReport(null)}
-                className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Audit content */}
-            {(() => {
-              const audit = getConfirmationAudit(confirmationsModalReport);
-              return (
-                <div className="space-y-4 overflow-y-auto flex-1 pr-1 text-xs">
-                  {/* Summary progress */}
-                  <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-stone-500 block">Taxa de Adesão</span>
-                      <strong className="text-sm font-bold text-stone-900">
-                        {audit.confirmations.length} de {audit.eligibleLeaders.length} líderes confirmaram a leitura
-                      </strong>
-                    </div>
-                    <span className="px-3 py-1 bg-orange-50 text-orange-950 font-bold rounded-lg border border-orange-200 text-sm">
-                      {audit.confirmationRate}%
-                    </span>
-                  </div>
-
-                  {/* Confirmed list */}
-                  <div>
-                    <h4 className="font-bold text-emerald-800 flex items-center gap-1.5 mb-2">
-                      <CheckCircle2 className="w-4 h-4" />
-                      Líderes que Confirmaram ({audit.confirmations.length})
-                    </h4>
-                    {audit.confirmations.length === 0 ? (
-                      <p className="text-stone-600 text-xs italic bg-stone-50 p-3 rounded-lg">
-                        Nenhuma confirmação registrada até o momento.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {audit.confirmations.map((c, idx) => (
-                          <div
-                            key={idx}
-                            className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-200/80 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <strong className="text-stone-900 font-semibold">{c.usuario_nome}</strong>
-                              <span className="text-stone-600 text-[11px] block">
-                                {c.usuario_cargo || 'Líder'} • {c.unidade_nome || 'Unidade Operacional'}
-                              </span>
-                            </div>
-                            <div className="text-right text-[11px] text-emerald-800 font-medium">
-                              {new Date(c.data_hora).toLocaleDateString('pt-BR')} às{' '}
-                              {new Date(c.data_hora).toLocaleTimeString('pt-BR', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pending list */}
-                  <div>
-                    <h4 className="font-bold text-orange-900 flex items-center gap-1.5 mb-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-600" />
-                      Líderes com Leitura Pendente ({audit.pendingLeaders.length})
-                    </h4>
-                    {audit.pendingLeaders.length === 0 ? (
-                      <p className="text-emerald-700 text-xs font-semibold bg-emerald-50 p-3 rounded-lg">
-                        ✓ Todos os líderes com acesso já confirmaram a leitura!
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {audit.pendingLeaders.map((l) => (
-                          <div
-                            key={l.id}
-                            className="p-2.5 bg-orange-50/40 rounded-xl border border-orange-200/80 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <strong className="text-stone-800 font-medium">{l.nome}</strong>
-                              <span className="text-stone-600 text-[11px] block">
-                                {l.cargo || 'Líder'} • {l.unidade_nome || 'Sem unidade vinculada'}
-                              </span>
-                            </div>
-                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-orange-100 text-orange-900 border border-orange-200">
-                              Pendente
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="pt-4 border-t border-stone-100 flex justify-end mt-4">
-              <button
-                type="button"
-                onClick={() => setConfirmationsModalReport(null)}
-                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-xl transition-colors"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create / Edit Report Modal */}
+      {/* Form Modal (Create / Edit Report with PDF Upload ONLY) */}
       {isFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-stone-200 my-8">
+          <div className="bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl border border-stone-200 my-8">
             <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
-              <h3 className="text-lg font-black text-stone-900">
-                {editingReport ? 'Editar Relatório' : 'Publicar Novo Relatório'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-[#C76B4A]/10 text-[#C76B4A]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-black text-stone-900">
+                  {editingReport ? 'Editar Relatório PDF' : 'Publicar Novo Relatório (Upload PDF)'}
+                </h3>
+              </div>
               <button
                 onClick={() => setIsFormModalOpen(false)}
                 className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl"
@@ -596,38 +535,36 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
             </div>
 
             <form onSubmit={handleSubmitForm} className="space-y-4 text-xs">
-              {/* Título */}
+              {/* Titulo */}
               <div>
-                <label className="font-semibold text-stone-700 mb-1 block">
+                <label className="font-bold text-stone-700 mb-1 block">
                   Título do Relatório *
                 </label>
                 <input
                   type="text"
                   value={formData.titulo}
                   onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-                  placeholder="Ex: Relatório Executivo Consolidado de Resultados - Agosto/2026"
-                  className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-medium"
+                  placeholder="Ex: Relatório Mensal de Operações - Setembro / 2026"
+                  className="w-full px-3.5 py-2.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-semibold"
                   required
                 />
               </div>
 
-              {/* Tipo & Período & Data de Publicação */}
+              {/* Tipo, Período & Data */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="font-semibold text-stone-700 mb-1 block">
-                    Tipo de Periodicidade *
+                    Frequência / Tipo *
                   </label>
                   <select
                     value={formData.tipo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tipo: e.target.value as ReportType })
-                    }
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, tipo: e.target.value as ReportType })}
+                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-semibold"
                   >
-                    <option value="DIARIO">Diário</option>
-                    <option value="SEMANAL">Semanal</option>
                     <option value="MENSAL">Mensal</option>
-                    <option value="GERAL">Geral</option>
+                    <option value="SEMANAL">Semanal</option>
+                    <option value="TRIMESTRAL">Trimestral</option>
+                    <option value="EVENTUAL">Eventual</option>
                   </select>
                 </div>
 
@@ -635,99 +572,155 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                   <label className="font-semibold text-stone-700 mb-1 block">
                     Período de Referência *
                   </label>
-                  <input
-                    type="text"
-                    value={formData.periodo}
-                    onChange={(e) => setFormData({ ...formData, periodo: e.target.value })}
-                    placeholder="Ex: Agosto / 2026, Semana 35"
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                    required
-                  />
+                  {formData.tipo === 'MENSAL' ? (
+                    <select
+                      value={formData.periodo}
+                      onChange={(e) => setFormData({ ...formData, periodo: e.target.value })}
+                      className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-stone-300 text-stone-900 focus:ring-2 focus:ring-[#C76B4A] focus:outline-none font-medium"
+                      required
+                    >
+                      {(() => {
+                        const today = new Date();
+                        const monthNames = [
+                          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                        ];
+                        const list: { label: string; value: string }[] = [];
+                        for (let offset = -1; offset <= 12; offset++) {
+                          const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                          const mName = monthNames[d.getMonth()];
+                          const yr = d.getFullYear();
+                          const value = `${mName} / ${yr}`;
+                          let tag = '';
+                          if (offset === -1) tag = ' (Mês Anterior)';
+                          else if (offset === 0) tag = ' (Mês Atual)';
+                          list.push({ value, label: `${value}${tag}` });
+                        }
+
+                        return list.map((item) => (
+                          <option key={item.label} value={item.value}>
+                            {item.label}
+                          </option>
+                        ));
+                      })()}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formData.periodo}
+                      onChange={(e) => setFormData({ ...formData, periodo: e.target.value })}
+                      placeholder="Ex: Semana 36 / 2026, 3º Trimestre 2026..."
+                      className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
+                      required
+                    />
+                  )}
                 </div>
 
                 <div>
-                  <label className="font-semibold text-stone-700 mb-1 block">
-                    Data de Publicação *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-stone-700 block">
+                      Data de Publicação
+                    </label>
+                    <span className="text-[10px] text-stone-400 font-bold bg-stone-100 px-1.5 py-0.5 rounded">
+                      Hoje (Automática)
+                    </span>
+                  </div>
                   <input
                     type="date"
+                    readOnly
+                    disabled
                     value={formData.data_publicacao}
-                    onChange={(e) => setFormData({ ...formData, data_publicacao: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
-                    required
+                    className="w-full px-3 py-2 text-xs bg-stone-100 rounded-xl border border-stone-200 text-stone-600 font-semibold cursor-not-allowed select-none"
+                    title="A data de publicação é fixada na data atual de cadastro."
                   />
                 </div>
               </div>
 
-              {/* Público de Acesso */}
-              <div>
-                <label className="font-semibold text-stone-700 mb-1 block">
-                  Público de Acesso *
+              {/* PDF File Upload Zone (Exclusive) */}
+              <div className="p-4 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-300 space-y-2">
+                <label className="font-bold text-stone-800 block text-xs flex items-center gap-1.5">
+                  <Upload className="w-4 h-4 text-[#C76B4A]" />
+                  Arquivo do Relatório em PDF (.pdf) *
                 </label>
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, publico_tipo: 'TODOS' })}
-                    className={`p-2.5 rounded-xl border text-center font-semibold ${
-                      formData.publico_tipo === 'TODOS'
-                        ? 'border-[#C76B4A] bg-[#C76B4A]/10 text-[#C76B4A]'
-                        : 'border-stone-200 text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Todos os Líderes
-                  </button>
+                <p className="text-[11px] text-stone-500">
+                  Faça o upload do documento oficial em PDF diagramado para disponibilização aos líderes.
+                </p>
 
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, publico_tipo: 'UNIDADES' })}
-                    className={`p-2.5 rounded-xl border text-center font-semibold ${
-                      formData.publico_tipo === 'UNIDADES'
-                        ? 'border-[#C76B4A] bg-[#C76B4A]/10 text-[#C76B4A]'
-                        : 'border-stone-200 text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Unidades Específicas
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, publico_tipo: 'LIDERES' })}
-                    className={`p-2.5 rounded-xl border text-center font-semibold ${
-                      formData.publico_tipo === 'LIDERES'
-                        ? 'border-[#C76B4A] bg-[#C76B4A]/10 text-[#C76B4A]'
-                        : 'border-stone-200 text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Líderes Específicos
-                  </button>
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handlePdfUpload}
+                    className="block w-full text-xs text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#C76B4A] file:text-white hover:file:bg-[#b55e3e] cursor-pointer"
+                  />
                 </div>
 
-                {/* Sub selector if UNIDADES */}
+                {formData.arquivo_pdf_nome && (
+                  <div className="p-2.5 bg-white rounded-xl border border-stone-200 flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-bold rounded text-[10px]">
+                        PDF
+                      </span>
+                      <span className="font-semibold text-stone-800">{formData.arquivo_pdf_nome}</span>
+                      <span className="text-[10px] text-stone-600">({formData.arquivo_pdf_tamanho})</span>
+                    </div>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                )}
+              </div>
+
+              {/* Público-Alvo */}
+              <div className="space-y-2">
+                <label className="font-semibold text-stone-700 block">
+                  Definição do Público-Alvo (Quem pode visualizar)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'TODOS', label: 'Todos os Líderes' },
+                    { id: 'UNIDADES', label: 'Projetos Específicos' },
+                    { id: 'LIDERES', label: 'Líderes Específicos' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, publico_tipo: p.id as any })}
+                      className={`p-2.5 rounded-xl border text-center font-bold text-xs transition ${
+                        formData.publico_tipo === p.id
+                          ? 'border-[#C76B4A] bg-[#C76B4A]/10 text-stone-900'
+                          : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
                 {formData.publico_tipo === 'UNIDADES' && (
-                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-                    <span className="text-[11px] font-semibold text-stone-600 block">
-                      Selecione as unidades que terão acesso:
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2 mt-2">
+                    <span className="text-[11px] font-semibold text-stone-700 block">
+                      Selecione os Projetos autorizados:
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-32 overflow-y-auto">
-                      {units.map((u) => {
-                        const checked = formData.unidades_alvo.includes(u.id);
+                    <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                      {projects.map((proj) => {
+                        const isChecked = formData.unidades_alvo.includes(proj.id);
                         return (
-                          <label
-                            key={u.id}
-                            className="flex items-center gap-2 p-1.5 hover:bg-stone-100 rounded-lg cursor-pointer text-xs text-stone-700"
-                          >
+                          <label key={proj.id} className="flex items-center gap-2 text-xs text-stone-800 cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={checked}
+                              checked={isChecked}
                               onChange={(e) => {
-                                const next = e.target.checked
-                                  ? [...formData.unidades_alvo, u.id]
-                                  : formData.unidades_alvo.filter((id) => id !== u.id);
-                                setFormData({ ...formData, unidades_alvo: next });
+                                if (e.target.checked) {
+                                  setFormData({ ...formData, unidades_alvo: [...formData.unidades_alvo, proj.id] });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    unidades_alvo: formData.unidades_alvo.filter((id) => id !== proj.id),
+                                  });
+                                }
                               }}
-                              className="rounded text-[#C76B4A] focus:ring-[#C76B4A]"
+                              className="rounded border-stone-300 text-[#C76B4A] focus:ring-[#C76B4A]"
                             />
-                            <span className="truncate">{u.nome}</span>
+                            <span className="truncate">{proj.nome}</span>
                           </label>
                         );
                       })}
@@ -735,34 +728,32 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                   </div>
                 )}
 
-                {/* Sub selector if LIDERES */}
                 {formData.publico_tipo === 'LIDERES' && (
-                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-                    <span className="text-[11px] font-semibold text-stone-600 block">
-                      Selecione os líderes que terão acesso:
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2 mt-2">
+                    <span className="text-[11px] font-semibold text-stone-700 block">
+                      Selecione os Líderes autorizados:
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-32 overflow-y-auto">
-                      {leaders.map((l) => {
-                        const checked = formData.lideres_alvo.includes(l.id);
+                    <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                      {leaders.map((ldr) => {
+                        const isChecked = formData.lideres_alvo.includes(ldr.id);
                         return (
-                          <label
-                            key={l.id}
-                            className="flex items-center gap-2 p-1.5 hover:bg-stone-100 rounded-lg cursor-pointer text-xs text-stone-700"
-                          >
+                          <label key={ldr.id} className="flex items-center gap-2 text-xs text-stone-800 cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={checked}
+                              checked={isChecked}
                               onChange={(e) => {
-                                const next = e.target.checked
-                                  ? [...formData.lideres_alvo, l.id]
-                                  : formData.lideres_alvo.filter((id) => id !== l.id);
-                                setFormData({ ...formData, lideres_alvo: next });
+                                if (e.target.checked) {
+                                  setFormData({ ...formData, lideres_alvo: [...formData.lideres_alvo, ldr.id] });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    lideres_alvo: formData.lideres_alvo.filter((id) => id !== ldr.id),
+                                  });
+                                }
                               }}
-                              className="rounded text-[#C76B4A] focus:ring-[#C76B4A]"
+                              className="rounded border-stone-300 text-[#C76B4A] focus:ring-[#C76B4A]"
                             />
-                            <span className="truncate">
-                              {l.nome} ({l.unidade_nome || 'Sem unidade'})
-                            </span>
+                            <span className="truncate">{ldr.nome}</span>
                           </label>
                         );
                       })}
@@ -771,67 +762,31 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                 )}
               </div>
 
-              {/* Descrição */}
+              {/* Descrição / Resumo */}
               <div>
                 <label className="font-semibold text-stone-700 mb-1 block">
-                  Resumo / Instruções para Leitura
+                  Resumo Executivo / Descrição
                 </label>
                 <textarea
                   rows={2}
                   value={formData.descricao}
                   onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                  placeholder="Instruções para a equipe de líderes..."
+                  placeholder="Orientações e destaques do relatório..."
                   className="w-full px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none"
                 />
               </div>
 
-              {/* Upload de PDF & Conteúdo Visualizador */}
-              <div>
-                <label className="font-semibold text-stone-700 mb-1 block">
-                  Arquivo PDF & Conteúdo do Documento
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                  <div>
-                    <span className="text-[11px] text-stone-500 block mb-0.5">Nome do Arquivo</span>
-                    <input
-                      type="text"
-                      value={formData.arquivo_pdf_nome}
-                      onChange={(e) => setFormData({ ...formData, arquivo_pdf_nome: e.target.value })}
-                      className="w-full px-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-stone-500 block mb-0.5">Tamanho do Arquivo</span>
-                    <input
-                      type="text"
-                      value={formData.arquivo_pdf_tamanho}
-                      onChange={(e) => setFormData({ ...formData, arquivo_pdf_tamanho: e.target.value })}
-                      className="w-full px-3 py-1.5 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900"
-                    />
-                  </div>
-                </div>
-
-                <textarea
-                  rows={6}
-                  value={formData.arquivo_pdf_conteudo}
-                  onChange={(e) => setFormData({ ...formData, arquivo_pdf_conteudo: e.target.value })}
-                  placeholder="Texto ou formatação Markdown exibido no visualizador embutido..."
-                  className="w-full font-mono px-3 py-2 text-xs bg-stone-50 rounded-xl border border-stone-300 text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#C76B4A] focus:outline-none leading-relaxed"
+              {/* Publicado Checkbox */}
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="checkbox-published"
+                  checked={formData.publicado}
+                  onChange={(e) => setFormData({ ...formData, publicado: e.target.checked })}
+                  className="rounded border-stone-300 text-[#C76B4A] focus:ring-[#C76B4A]"
                 />
-              </div>
-
-              {/* Status de Publicação */}
-              <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.publicado}
-                    onChange={(e) => setFormData({ ...formData, publicado: e.target.checked })}
-                    className="w-4 h-4 rounded text-[#C76B4A] focus:ring-[#C76B4A]"
-                  />
-                  <span className="font-semibold text-stone-800 text-xs">
-                    Publicar imediatamente para visualização dos líderes
-                  </span>
+                <label htmlFor="checkbox-published" className="font-bold text-stone-800 cursor-pointer text-xs">
+                  Publicar imediatamente (ficará visível para os líderes designados)
                 </label>
               </div>
 
@@ -847,7 +802,7 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
                   type="submit"
                   className="px-5 py-2 bg-[#C76B4A] hover:bg-[#b55e3e] text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
                 >
-                  {editingReport ? 'Salvar Alterações' : 'Publicar Relatório'}
+                  {editingReport ? 'Salvar Alterações' : 'Salvar e Publicar Relatório'}
                 </button>
               </div>
             </form>
@@ -855,11 +810,79 @@ Apresentação das diretrizes e acompanhamento dos indicadores operacionais da r
         </div>
       )}
 
-      {/* Embedded Viewer Modal for Admin Preview */}
+      {/* Confirmation List Modal */}
+      {confirmationsModalReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-xl w-full shadow-2xl border border-stone-200 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-stone-900">
+                    Confirmações de Leitura
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Relatório: <strong>{confirmationsModalReport.titulo}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmationsModalReport(null)}
+                className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {(confirmationsModalReport.confirmacoes_leitura || []).length === 0 ? (
+                <div className="p-8 text-center text-stone-400 text-xs">
+                  Nenhum líder confirmou a leitura deste relatório ainda.
+                </div>
+              ) : (
+                (confirmationsModalReport.confirmacoes_leitura || []).map((c, i) => (
+                  <div
+                    key={i}
+                    className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
+                      <strong className="text-stone-900 block">{c.usuario_nome}</strong>
+                      <span className="text-[11px] text-stone-600">
+                        {c.usuario_cargo || 'Líder'} {c.unidade_nome ? `• ${c.unidade_nome}` : ''}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[11px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 block">
+                        Confirmado em
+                      </span>
+                      <span className="text-[10px] text-stone-600 mt-0.5 block">
+                        {new Date(c.data_confirmacao).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 mt-3 border-t border-stone-100">
+              <button
+                onClick={() => setConfirmationsModalReport(null)}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs rounded-xl"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Viewer Modal */}
       <ReportViewerModal
+        isOpen={!!viewingReport}
         report={viewingReport}
         currentUser={user}
-        isOpen={!!viewingReport}
         onClose={() => setViewingReport(null)}
       />
     </div>

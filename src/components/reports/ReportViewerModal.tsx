@@ -47,6 +47,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
     : undefined;
 
   const isConfirmed = !!userConfirmation || justConfirmed;
+  const canDownloadPrint = currentUser?.role === 'ADMINISTRADOR' || currentUser?.role === 'GERENCIA';
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked && currentUser && !isConfirmed) {
@@ -162,25 +163,29 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
               </button>
             </div>
 
-            <button
-              id="btn-print-report"
-              onClick={handlePrint}
-              className="p-2 text-stone-300 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium border border-stone-700"
-              title="Imprimir Relatório"
-            >
-              <Printer className="w-4 h-4" />
-              <span className="hidden sm:inline">Imprimir</span>
-            </button>
+            {canDownloadPrint && (
+              <>
+                <button
+                  id="btn-print-report"
+                  onClick={handlePrint}
+                  className="p-2 text-stone-300 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium border border-stone-700"
+                  title="Imprimir Relatório"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span className="hidden sm:inline">Imprimir</span>
+                </button>
 
-            <button
-              id="btn-download-report"
-              onClick={handleDownload}
-              className="p-2 text-white bg-[#C76B4A] hover:bg-[#b55e3e] rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium shadow-sm"
-              title="Baixar PDF / Arquivo"
-            >
-              <Download className="w-4 h-4" />
-              <span>Baixar Arquivo</span>
-            </button>
+                <button
+                  id="btn-download-report"
+                  onClick={handleDownload}
+                  className="p-2 text-white bg-[#C76B4A] hover:bg-[#b55e3e] rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                  title="Baixar PDF / Arquivo"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Baixar Arquivo</span>
+                </button>
+              </>
+            )}
 
             <button
               id="btn-close-viewer"

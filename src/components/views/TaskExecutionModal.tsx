@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   TarefaOS,
   EvidenciaSubmetida,
@@ -7,6 +7,7 @@ import {
 } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
 import { CommentsThread } from '../comments/CommentsThread';
+import { useAuth } from '../../context/AuthContext';
 import {
   X,
   CheckCircle2,
@@ -23,7 +24,9 @@ import {
   Play,
   HelpCircle,
   FileCheck2,
-  Calendar
+  Calendar,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
 interface TaskExecutionModalProps {
@@ -41,12 +44,62 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
   onCompleted,
   onOpenBlockModal,
 }) => {
+  const { currentUser } = useAuth();
+  const isManager = currentUser?.role === 'ADMINISTRADOR' || currentUser?.role === 'GERENCIA';
+  const isReadOnly = task?.status === 'CONCLUIDA' || task?.status === 'AGUARDANDO_VALIDACAO';
+
+  // Validation permissions check
+  const isSelectedValidator = !task?.validadores_ids || task.validadores_ids.length === 0 || (currentUser ? task.validadores_ids.includes(currentUser.id) : false);
+
+  const isManagedLeader = useMemo(() => {
+    if (!currentUser || !task) return true;
+    if (currentUser.role !== 'GERENCIA') return true;
+    const leaders = dbStore.getLeaders();
+    const leader = leaders.find((l) => l.usuario_id === task.responsavel_id || l.id === task.responsavel_id);
+    if (leader) {
+      if (leader.gestores_imediatos_ids && leader.gestores_imediatos_ids.length > 0) {
+        return leader.gestores_imediatos_ids.includes(currentUser.id);
+      }
+      return false;
+    }
+    return false;
+  }, [currentUser, task]);
+
+  const hasAlreadyApproved = useMemo(() => {
+    if (!currentUser || !task?.validacoes_aprovadas) return false;
+    return task.validacoes_aprovadas.some((a) => a.validador_id === currentUser.id);
+  }, [currentUser, task]);
+
+  const validatorsList = useMemo(() => {
+    if (!task) return [];
+    const allUsers = dbStore.getUsers();
+    const vIds = (task.validadores_ids && task.validadores_ids.length > 0)
+      ? task.validadores_ids
+      : (task.validado_por_id ? [task.validado_por_id] : []);
+
+    return vIds.map((vId) => {
+      const u = allUsers.find((user) => user.id === vId);
+      const approval = task.validacoes_aprovadas?.find((a) => a.validador_id === vId);
+      return {
+        id: vId,
+        nome: u?.nome || approval?.validador_nome || 'Validador',
+        role: u?.role || approval?.validador_role || 'GERENCIA',
+        approved: !!approval,
+        approvalData: approval?.data_validacao,
+      };
+    });
+  }, [task]);
+
+  const canValidateOS = isManager && isSelectedValidator && isManagedLeader && !hasAlreadyApproved;
+
   // State for dynamic evidence inputs keyed by requirement id
   const [evidenceMap, setEvidenceMap] = useState<Record<string, any>>({});
   const [observacoes, setObservacoes] = useState('');
   const [tempoMinutos, setTempoMinutos] = useState(30);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   // Initialize values from task
   useEffect(() => {
@@ -90,6 +143,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
 
   // Toggle checklist item
   const handleToggleChecklist = (reqId: string, itemId: string) => {
+    if (isReadOnly) return;
     const currentList: string[] = evidenceMap[reqId] || [];
     let updated: string[];
     if (currentList.includes(itemId)) {
@@ -102,6 +156,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
 
   // Simulate Photo Upload with preset real sample images
   const handleSimulatePhotoUpload = (reqId: string) => {
+    if (isReadOnly) return;
     const samplePhotos = [
       'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&auto=format&fit=crop&q=80',
@@ -114,6 +169,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
 
   // Simulate Document / File Upload
   const handleSimulateFileUpload = (reqId: string) => {
+    if (isReadOnly) return;
     setEvidenceMap({
       ...evidenceMap,
       [reqId]: `Laudo_Tecnico_Conformidade_${task.numero_os.replace(/\s+/g, '')}.pdf`,
@@ -124,6 +180,52 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
   const handleStartTask = () => {
     dbStore.startTask(task.id);
     setErrorMessage('');
+  };
+
+  // Approve Validation (Administrador or Gerência)
+  const handleApproveValidation = () => {
+    if (!currentUser || !task) return;
+    setIsSubmitting(true);
+    try {
+      dbStore.approveTaskValidation(task.id, {
+        id: currentUser.id,
+        nome: currentUser.nome,
+        role: currentUser.role,
+      });
+      if (onCompleted) onCompleted();
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao aprovar validação da OS.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Reject / Return Validation for adjustments
+  const handleRejectValidation = () => {
+    if (!currentUser || !task) return;
+    if (!rejectionReason.trim()) {
+      setErrorMessage('Por favor, informe o motivo da devolução da OS para que o Líder possa corrigir.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      dbStore.rejectTaskValidation(
+        task.id,
+        {
+          id: currentUser.id,
+          nome: currentUser.nome,
+          role: currentUser.role,
+        },
+        rejectionReason.trim()
+      );
+      if (onCompleted) onCompleted();
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao devolver tarefa.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Validate and submit completion
@@ -191,11 +293,16 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      dbStore.completeTask(task.id, {
-        evidencias: formattedEvidencias,
-        observacoes_conclusao: observacoes.trim() || undefined,
-        tempo_execucao_minutos: tempoMinutos,
-      });
+      dbStore.completeTask(
+        task.id,
+        {
+          evidencias: formattedEvidencias,
+          observacoes_conclusao: observacoes.trim() || undefined,
+          tempo_execucao_minutos: tempoMinutos,
+        },
+        currentUser?.role,
+        currentUser ? { id: currentUser.id, nome: currentUser.nome } : undefined
+      );
 
       if (onCompleted) onCompleted();
       onClose();
@@ -246,7 +353,17 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-600">Status Atual:</span>
-                <span className="font-bold text-[#C76B4A] uppercase">{task.status}</span>
+                <span
+                  className={`font-bold uppercase ${
+                    task.status === 'AGUARDANDO_VALIDACAO'
+                      ? 'text-purple-700'
+                      : task.status === 'CONCLUIDA'
+                      ? 'text-emerald-700'
+                      : 'text-[#C76B4A]'
+                  }`}
+                >
+                  {task.status === 'AGUARDANDO_VALIDACAO' ? 'Aguardando Validação' : task.status}
+                </span>
               </div>
               <div className="flex items-center gap-1.5 text-gray-500 text-[11px]">
                 <Clock className="w-3.5 h-3.5 text-gray-400" />
@@ -254,17 +371,138 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
               </div>
             </div>
 
-            {task.status !== 'EM_ANDAMENTO' && task.status !== 'CONCLUIDA' && (
-              <button
-                type="button"
-                onClick={handleStartTask}
-                className="px-4 py-2 bg-[#355C7D] hover:bg-[#2c4c66] text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                Iniciar Execução Agora
-              </button>
-            )}
+            {task.status !== 'EM_ANDAMENTO' &&
+              task.status !== 'CONCLUIDA' &&
+              task.status !== 'AGUARDANDO_VALIDACAO' && (
+                <button
+                  type="button"
+                  onClick={handleStartTask}
+                  className="px-4 py-2 bg-[#355C7D] hover:bg-[#2c4c66] text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  Iniciar Execução Agora
+                </button>
+              )}
           </div>
+
+          {/* Validation Notice Banner */}
+          {task.status === 'AGUARDANDO_VALIDACAO' && (
+            <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col gap-3 text-xs">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-purple-700" />
+                    <span className="font-bold text-purple-900 uppercase tracking-wide">
+                      Aguardando Validação
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-purple-800">
+                    Ordem de serviço finalizada e submetida pelo Líder{task.responsavel_nome ? ` (${task.responsavel_nome})` : ''} em {task.data_conclusao ? new Date(task.data_conclusao).toLocaleString('pt-BR') : 'recente'}.
+                  </p>
+                </div>
+                {isManager && (
+                  <span className={`px-3 py-1 rounded-lg font-bold text-[11px] flex items-center gap-1 self-start sm:self-center shrink-0 ${
+                    hasAlreadyApproved
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : canValidateOS
+                      ? 'bg-purple-200/80 text-purple-900'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {hasAlreadyApproved ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Sua validação foi registrada
+                      </>
+                    ) : canValidateOS ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-purple-700" /> Requer sua aprovação
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="w-3.5 h-3.5 text-gray-500" /> Validação restrita
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {/* Multi-validator status cards */}
+              {validatorsList.length > 0 && (
+                <div className="pt-2 border-t border-purple-200/70 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-purple-950">
+                    <span>Validadores Designados (Aprovação obrigatória de todos):</span>
+                    <span className="text-[10px] bg-purple-200/70 text-purple-900 px-2 py-0.5 rounded-full font-bold">
+                      {validatorsList.filter((v) => v.approved).length} de {validatorsList.length} aprovado(s)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {validatorsList.map((val) => (
+                      <div
+                        key={val.id}
+                        className={`p-2 rounded-lg border flex items-center justify-between gap-2 text-[11px] ${
+                          val.approved
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                            : 'bg-white/80 border-purple-200 text-purple-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          {val.approved ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <Clock className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                          )}
+                          <span className="font-semibold truncate">{val.nome}</span>
+                          <span className="text-[10px] opacity-70">({val.role === 'GERENCIA' ? 'Gerência' : 'Admin'})</span>
+                        </div>
+                        <span className={`text-[10px] font-bold shrink-0 ${val.approved ? 'text-emerald-700' : 'text-amber-600'}`}>
+                          {val.approved ? 'Aprovado' : 'Pendente'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Rejection / Returned Alert */}
+          {task.motivo_recusa && (
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>OS Devolvida para Ajuste por {task.recusado_por_nome || 'Gerência'}:</span>
+              </div>
+              <p className="text-[11px] pl-5 text-amber-800 font-medium">"{task.motivo_recusa}"</p>
+            </div>
+          )}
+
+          {/* Approval Confirmation Info */}
+          {task.status === 'CONCLUIDA' && (
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-bold">
+                  Ordem de Serviço 100% Validada e Concluída
+                </span>
+              </div>
+              {task.validacoes_aprovadas && task.validacoes_aprovadas.length > 0 ? (
+                <div className="flex flex-wrap gap-2 pt-1 pl-6">
+                  {task.validacoes_aprovadas.map((aprov) => (
+                    <span
+                      key={aprov.validador_id}
+                      className="px-2 py-1 bg-white rounded-md border border-emerald-300 text-[11px] text-emerald-900 font-medium flex items-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <strong>{aprov.validador_nome}</strong> ({aprov.validador_role === 'GERENCIA' ? 'Gerência' : 'Admin'}) em {new Date(aprov.data_validacao).toLocaleDateString('pt-BR')}
+                    </span>
+                  ))}
+                </div>
+              ) : task.validado_por_nome ? (
+                <p className="text-[11px] pl-6 text-emerald-800">
+                  Validada por <strong>{task.validado_por_nome}</strong> ({task.validado_por_role === 'GERENCIA' ? 'Gerência' : 'Admin'}) {task.data_validacao ? `em ${new Date(task.data_validacao).toLocaleString('pt-BR')}` : ''}
+                </p>
+              ) : null}
+            </div>
+          )}
 
           {/* Instructions */}
           {task.descricao && (
@@ -573,9 +811,10 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
                   type="number"
                   min={1}
                   max={999}
+                  disabled={isReadOnly}
                   value={tempoMinutos}
                   onChange={(e) => setTempoMinutos(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-gray-200"
+                  className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
                 />
               </div>
 
@@ -585,10 +824,11 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
                 </label>
                 <textarea
                   rows={2}
+                  disabled={isReadOnly}
                   placeholder="Relate resumo final, observações para auditoria ou justificativas..."
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-gray-200 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-gray-200 resize-none disabled:bg-gray-100 disabled:text-gray-500"
                 />
               </div>
             </div>
@@ -607,19 +847,22 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
         {/* Footer Actions */}
         <div className="p-4 sm:p-5 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            {onOpenBlockModal && task.status !== 'BLOQUEADA' && (
-              <button
-                type="button"
-                onClick={() => onOpenBlockModal(task)}
-                className="px-3 py-2 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors flex items-center gap-1.5"
-              >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Reportar Bloqueio / Falta de Insumo
-              </button>
-            )}
+            {onOpenBlockModal &&
+              task.status !== 'BLOQUEADA' &&
+              task.status !== 'CONCLUIDA' &&
+              task.status !== 'AGUARDANDO_VALIDACAO' && (
+                <button
+                  type="button"
+                  onClick={() => onOpenBlockModal(task)}
+                  className="px-3 py-2 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  Reportar Bloqueio / Falta de Insumo
+                </button>
+              )}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -627,15 +870,95 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
             >
               Fechar
             </button>
-            <button
-              type="button"
-              onClick={handleCompleteTask}
-              disabled={isSubmitting}
-              className="px-6 py-2.5 bg-[#2E7D32] hover:bg-[#256628] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Concluir OS com Evidências
-            </button>
+
+            {task.status === 'AGUARDANDO_VALIDACAO' ? (
+              canValidateOS ? (
+                isRejecting ? (
+                  <div className="w-full flex flex-col gap-2 pt-2 border-t border-red-200 mt-2">
+                    <label className="text-xs font-bold text-red-900">
+                      Motivo da Devolução para Ajuste:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Descreva o que o Líder precisa corrigir..."
+                      className="w-full p-2 text-xs bg-white rounded-lg border border-red-300 focus:outline-hidden"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRejecting(false);
+                          setRejectionReason('');
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRejectValidation}
+                        disabled={isSubmitting}
+                        className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Confirmar Devolução
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsRejecting(true)}
+                      className="px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold rounded-xl border border-amber-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                      Devolver para Ajuste
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApproveValidation}
+                      disabled={isSubmitting}
+                      className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-2"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      Aprovar e Concluir OS
+                    </button>
+                  </>
+                )
+              ) : hasAlreadyApproved ? (
+                <div className="px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Sua validação foi registrada. Aguardando validação dos demais validadores designados.</span>
+                </div>
+              ) : isManager ? (
+                <div className="px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    {!isSelectedValidator
+                      ? 'Você não foi selecionado como Validador desta OS durante a criação.'
+                      : 'Esta OS pertence a um Líder fora da sua gestão direta (Gestor Imediato).'}
+                  </span>
+                </div>
+              ) : (
+                <div className="px-4 py-2 bg-purple-50 text-purple-800 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-purple-600" />
+                  Aguardando Validação da Gerência / Admin
+                </div>
+              )
+            ) : task.status !== 'CONCLUIDA' ? (
+              <button
+                type="button"
+                onClick={handleCompleteTask}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-[#2E7D32] hover:bg-[#256628] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {isManager ? 'Concluir OS com Evidências' : 'Submeter para Validação'}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

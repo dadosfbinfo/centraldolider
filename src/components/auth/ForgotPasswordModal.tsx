@@ -7,14 +7,12 @@ interface ForgotPasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialEmail?: string;
-  onOpenInbox?: () => void;
 }
 
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   isOpen,
   onClose,
   initialEmail = '',
-  onOpenInbox,
 }) => {
   const { requestPasswordReset } = useAuth();
   const [email, setEmail] = useState(initialEmail);
@@ -68,36 +66,17 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <CheckCircle2 className="w-7 h-7" />
               </div>
               <div>
-                <h4 className="font-semibold text-[#343A40] text-base">E-mail de Recuperação Enviado</h4>
+                <h4 className="font-semibold text-[#343A40] text-base">Solicitação Processada</h4>
                 <p className="text-sm text-gray-600 mt-1">
-                  Enviamos as instruções para <strong className="text-[#355C7D]">{sentResult.to}</strong>.
+                  Se o e-mail <strong className="text-[#355C7D]">{sentResult.to}</strong> estiver cadastrado, as instruções foram encaminhadas. Entre em contato com a administração caso precise de redefinição imediata.
                 </p>
               </div>
 
-              <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 text-xs text-left text-gray-600 space-y-1">
-                <p className="font-medium text-[#343A40]">Token gerado para teste:</p>
-                <code className="block p-2 bg-white rounded border font-mono text-[#C76B4A] break-all text-[11px]">
-                  {sentResult.token}
-                </code>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                {onOpenInbox && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenInbox();
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#355C7D] text-white text-sm font-semibold hover:bg-[#2c4c67] transition shadow-sm"
-                  >
-                    Ver Caixa de E-mails Simulada
-                  </button>
-                )}
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="w-full py-2.5 px-4 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition"
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#C76B4A] text-white text-sm font-semibold hover:bg-[#b55d3d] transition shadow-xs"
                 >
                   Voltar ao Login
                 </button>

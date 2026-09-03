@@ -1,35 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginView } from './components/auth/LoginView';
-import { RegisterView } from './components/auth/RegisterView';
 import { AppLayout } from './components/layout/AppLayout';
 import { DatabaseSchemaModal } from './components/views/DatabaseSchemaModal';
-import { EmailConfirmationModal } from './components/auth/EmailConfirmationModal';
 import { Loader2 } from 'lucide-react';
 
 const MainAppRouter: React.FC = () => {
-  const { isAuthenticated, isLoading, confirmEmail } = useAuth();
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const { isAuthenticated, isLoading } = useAuth();
   const [schemaModalOpen, setSchemaModalOpen] = useState(false);
-  const [autoConfirmToken, setAutoConfirmToken] = useState<string | null>(null);
-
-  // Check URL Hash for direct email confirmation links (e.g. #/confirmar-email?token=...)
-  useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash;
-      if (hash.includes('confirmar-email') && hash.includes('token=')) {
-        const urlParams = new URLSearchParams(hash.split('?')[1]);
-        const token = urlParams.get('token');
-        if (token) {
-          setAutoConfirmToken(token);
-        }
-      }
-    };
-
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
 
   if (isLoading) {
     return (
@@ -48,39 +26,17 @@ const MainAppRouter: React.FC = () => {
     return <AppLayout />;
   }
 
-  // If user is unauthenticated, show Login or Register view
+  // If user is unauthenticated, show Login view
   return (
     <>
-      {authMode === 'login' ? (
-        <LoginView
-          onSwitchToRegister={() => setAuthMode('register')}
-          onOpenDatabaseSchema={() => setSchemaModalOpen(true)}
-        />
-      ) : (
-        <RegisterView
-          onSwitchToLogin={() => setAuthMode('login')}
-        />
-      )}
+      <LoginView
+        onOpenDatabaseSchema={() => setSchemaModalOpen(true)}
+      />
 
       {/* Global Database Schema Modal */}
       <DatabaseSchemaModal
         isOpen={schemaModalOpen}
         onClose={() => setSchemaModalOpen(false)}
-      />
-
-      {/* Auto-Triggered Email Confirmation Modal if link visited */}
-      <EmailConfirmationModal
-        isOpen={!!autoConfirmToken}
-        initialToken={autoConfirmToken || ''}
-        onClose={() => {
-          setAutoConfirmToken(null);
-          window.location.hash = '';
-        }}
-        onSuccess={() => {
-          setAutoConfirmToken(null);
-          window.location.hash = '';
-          setAuthMode('login');
-        }}
       />
     </>
   );

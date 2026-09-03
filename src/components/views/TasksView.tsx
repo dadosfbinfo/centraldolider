@@ -6,8 +6,9 @@ import { TaskFormModal } from './TaskFormModal';
 import { TaskExecutionModal } from './TaskExecutionModal';
 import { TaskBlockModal } from './TaskBlockModal';
 import { TaskPrintModal } from './TaskPrintModal';
-import { UnitsManagementModal } from './UnitsManagementModal';
+import { TaskImportModal } from './TaskImportModal';
 import { CategoriesManagementModal } from './CategoriesManagementModal';
+import { PeriodFilter, PeriodSelection } from '../common/PeriodFilter';
 import {
   CheckSquare,
   Clock,
@@ -18,6 +19,7 @@ import {
   Filter,
   Plus,
   Building2,
+  FolderKanban,
   User,
   MoreVertical,
   Play,
@@ -34,6 +36,7 @@ import {
   Sparkles,
   Ban,
   FileDown,
+  FileSpreadsheet,
   FileCheck2
 } from 'lucide-react';
 
@@ -44,6 +47,7 @@ interface TasksViewProps {
 export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'ADMINISTRADOR';
+  const canCreateOS = currentUser?.role === 'ADMINISTRADOR' || currentUser?.role === 'GERENCIA';
 
   // Sub-tabs for Leader / Admin
   const [activeSubTab, setActiveSubTab] = useState<'hoje' | 'proximas' | 'atrasadas' | 'concluidas' | 'todas'>(
@@ -60,7 +64,13 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   const [filterUnit, setFilterUnit] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [filterTipoOperacao, setFilterTipoOperacao] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [period, setPeriod] = useState<PeriodSelection>({
+    mode: 'month',
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  });
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -75,7 +85,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [taskToPrint, setTaskToPrint] = useState<TarefaOS | null>(null);
 
-  const [isUnitsModalOpen, setIsUnitsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
 
   // Quick Action Menu Popover per task
@@ -100,21 +110,38 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   // Date helpers
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Filtering based on SubTab
+  // Filtering based on SubTab and Period
   const getSubTabTasks = () => {
     return tasks.filter((t) => {
-      if (activeSubTab === 'hoje') {
-        return t.data === todayStr && t.status !== 'CONCLUIDA';
+      // Subtab check
+      if (activeSubTab === 'hoje' && (t.data !== todayStr || t.status === 'CONCLUIDA')) {
+        return false;
       }
-      if (activeSubTab === 'proximas') {
-        return t.data > todayStr && t.status !== 'CONCLUIDA';
+      if (activeSubTab === 'proximas' && (t.data <= todayStr || t.status === 'CONCLUIDA')) {
+        return false;
       }
-      if (activeSubTab === 'atrasadas') {
-        return t.status === 'ATRASADA';
+      if (activeSubTab === 'atrasadas' && t.status !== 'ATRASADA') {
+        return false;
       }
-      if (activeSubTab === 'concluidas') {
-        return t.status === 'CONCLUIDA';
+      if (activeSubTab === 'concluidas' && t.status !== 'CONCLUIDA') {
+        return false;
       }
+
+      // Period filter check (only when not on 'hoje' or specific subtabs that override)
+      if (activeSubTab === 'todas' || activeSubTab === 'concluidas') {
+        if (period.mode === 'year' && t.data) {
+          const taskYear = parseInt(t.data.substring(0, 4), 10);
+          if (taskYear !== period.year) return false;
+        } else if (period.mode === 'month' && t.data) {
+          const taskYear = parseInt(t.data.substring(0, 4), 10);
+          const taskMonth = parseInt(t.data.substring(5, 7), 10);
+          if (taskYear !== period.year || taskMonth !== period.month) return false;
+        } else if (period.mode === 'custom' && t.data) {
+          if (period.startDate && t.data < period.startDate) return false;
+          if (period.endDate && t.data > period.endDate) return false;
+        }
+      }
+
       return true;
     });
   };
@@ -128,12 +155,18 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
       (t.responsavel_nome && t.responsavel_nome.toLowerCase().includes(search.toLowerCase())) ||
       (t.unidade && t.unidade.toLowerCase().includes(search.toLowerCase()));
 
-    const matchesUnit = !filterUnit || t.unidade_id === filterUnit || t.unidade.includes(filterUnit);
+    const matchesUnit =
+      !filterUnit ||
+      t.unidade_id === filterUnit ||
+      t.projeto_id === filterUnit ||
+      (t.projetos_ids && t.projetos_ids.includes(filterUnit)) ||
+      (t.unidade && t.unidade.toLowerCase().includes(filterUnit.toLowerCase()));
     const matchesCategory = !filterCategory || t.categoria_id === filterCategory;
     const matchesPriority = !filterPriority || t.prioridade === filterPriority;
+    const matchesTipoOperacao = !filterTipoOperacao || (t.tipo_operacao || 'Rotina Operacional') === filterTipoOperacao;
     const matchesStatus = !filterStatus || t.status === filterStatus;
 
-    return matchesSearch && matchesUnit && matchesCategory && matchesPriority && matchesStatus;
+    return matchesSearch && matchesUnit && matchesCategory && matchesPriority && matchesTipoOperacao && matchesStatus;
   });
 
   // KPI Counters
@@ -216,16 +249,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
           </p>
         </div>
 
-        {/* Top Admin Action Buttons */}
+        {/* Top Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <>
               <button
-                onClick={() => setIsUnitsModalOpen(true)}
-                className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-2xs transition-colors"
+                onClick={() => setIsImportModalOpen(true)}
+                className="px-3.5 py-2 bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-2xs transition"
               >
-                <Building2 className="w-3.5 h-3.5 text-[#C76B4A]" />
-                Unidades ({units.length})
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                Importar Tarefas (.xlsx)
               </button>
 
               <button
@@ -238,7 +271,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
             </>
           )}
 
-          {isAdmin && (
+          {canCreateOS && (
             <button
               onClick={handleOpenCreate}
               className="px-4 py-2 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-xs transition-all"
@@ -249,6 +282,17 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
           )}
         </div>
       </div>
+
+      {/* Period Filter for All/Completed SubTabs */}
+      {(activeSubTab === 'todas' || activeSubTab === 'concluidas') && (
+        <div className="p-3 bg-white rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#343A40]">
+            <Calendar className="w-4 h-4 text-[#C76B4A]" />
+            <span>Filtro de Período da Consulta:</span>
+          </div>
+          <PeriodFilter value={period} onChange={setPeriod} />
+        </div>
+      )}
 
       {/* Sub-Tabs Nav Pill Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3">
@@ -302,7 +346,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
 
       {/* Filter and Search Bar */}
       <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           {/* Search Input */}
           <div className="lg:col-span-2 relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -315,19 +359,37 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
             />
           </div>
 
-          {/* Unit Filter */}
+          {/* Project Filter */}
           <div>
             <select
               value={filterUnit}
               onChange={(e) => setFilterUnit(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
             >
-              <option value="">Todas as Unidades</option>
+              <option value="">Todos os Projetos</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nome}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Operation Type Filter */}
+          <div>
+            <select
+              value={filterTipoOperacao}
+              onChange={(e) => setFilterTipoOperacao(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+            >
+              <option value="">Todos os Tipos de Operação</option>
+              <option value="Rotina Operacional">Rotina Operacional</option>
+              <option value="Preventiva">Preventiva</option>
+              <option value="Corretiva">Corretiva</option>
+              <option value="Inspeção">Inspeção</option>
+              <option value="Auditoria">Auditoria</option>
+              <option value="Treinamento">Treinamento</option>
+              <option value="Outros">Outros</option>
             </select>
           </div>
 
@@ -364,7 +426,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         </div>
 
         {/* Active Filters Clear Shortcut */}
-        {(search || filterUnit || filterCategory || filterPriority || filterStatus) && (
+        {(search || filterUnit || filterCategory || filterPriority || filterTipoOperacao || filterStatus) && (
           <div className="flex items-center justify-between text-[11px] pt-1 text-gray-500">
             <span>Filtros ativos aplicados</span>
             <button
@@ -373,6 +435,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                 setFilterUnit('');
                 setFilterCategory('');
                 setFilterPriority('');
+                setFilterTipoOperacao('');
                 setFilterStatus('');
               }}
               className="text-[#C76B4A] hover:underline font-bold"
@@ -439,6 +502,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                         {task.categoria_nome}
                       </span>
 
+                      {task.tipo_operacao && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FAF8F5] border border-[#EBE3DC] text-[#8B6B4A]">
+                          ⚙️ {task.tipo_operacao}
+                        </span>
+                      )}
+
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                           task.prioridade === 'CRITICA'
@@ -461,6 +530,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           isCompleted
                             ? 'bg-emerald-100 text-emerald-800'
+                            : task.status === 'AGUARDANDO_VALIDACAO'
+                            ? 'bg-purple-100 text-purple-800 border border-purple-200'
                             : isOverdue
                             ? 'bg-red-500 text-white animate-pulse'
                             : isBlocked
@@ -470,7 +541,13 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                             : 'bg-gray-100 text-gray-700'
                         }`}
                       >
-                        {task.status}
+                        {task.status === 'AGUARDANDO_VALIDACAO'
+                          ? `AGUARDANDO VALIDAÇÃO${
+                              task.validadores_ids && task.validadores_ids.length > 1
+                                ? ` (${task.validacoes_aprovadas?.length || 0}/${task.validadores_ids.length})`
+                                : ''
+                            }`
+                          : task.status}
                       </span>
                     </div>
 
@@ -682,9 +759,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         task={taskToPrint}
       />
 
-      <UnitsManagementModal
-        isOpen={isUnitsModalOpen}
-        onClose={() => setIsUnitsModalOpen(false)}
+      <TaskImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={() => loadData()}
       />
 
       <CategoriesManagementModal

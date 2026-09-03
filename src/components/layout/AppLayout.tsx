@@ -6,6 +6,7 @@ import { DashboardHome } from '../views/DashboardHome';
 import { TasksView } from '../views/TasksView';
 import { UsersManagementView } from '../views/UsersManagementView';
 import { LeadersManagementView } from '../views/LeadersManagementView';
+import { ProjectsManagementView } from '../views/ProjectsManagementView';
 import { LeaderGoalsView } from '../views/LeaderGoalsView';
 import { GoalsManagementView } from '../views/GoalsManagementView';
 import { LeaderReportsView } from '../views/LeaderReportsView';
@@ -14,18 +15,20 @@ import { CalendarView } from '../views/CalendarView';
 import { CalendarManagementView } from '../views/CalendarManagementView';
 import { UserProfileView } from '../views/UserProfileView';
 import { DatabaseSchemaModal } from '../views/DatabaseSchemaModal';
-import { EmailSimulationInbox } from '../auth/EmailSimulationInbox';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
   const { activeTab, currentUser, setActiveTab } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [schemaModalOpen, setSchemaModalOpen] = useState(false);
-  const [emailInboxOpen, setEmailInboxOpen] = useState(false);
 
-  // Strict RBAC: Leader cannot access any admin-* routes
+  // Strict RBAC: Leader cannot access admin-* management routes. GERENCIA cannot access admin-usuarios, admin-lideres, admin-projetos, admin-metas
   const isAdminRoute = activeTab.startsWith('admin-');
-  const isUnauthorized = isAdminRoute && currentUser?.role !== 'ADMINISTRADOR';
+  const gerenciaBlockedTabs = ['admin-usuarios', 'admin-lideres', 'admin-projetos', 'admin-metas'];
+  const isGerenciaBlocked = currentUser?.role === 'GERENCIA' && gerenciaBlockedTabs.includes(activeTab);
+  const isUnauthorized =
+    (isAdminRoute && currentUser?.role !== 'ADMINISTRADOR' && currentUser?.role !== 'GERENCIA') ||
+    isGerenciaBlocked;
 
   const renderActiveView = () => {
     if (isUnauthorized) {
@@ -34,9 +37,9 @@ export const AppLayout: React.FC = () => {
           <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto">
             <ShieldAlert className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-bold text-[#343A40]">Acesso Restrito à Administração</h2>
+          <h2 className="text-xl font-bold text-[#343A40]">Acesso Restrito à Gestão</h2>
           <p className="text-xs text-gray-500 leading-relaxed">
-            Esta funcionalidade requer privilégios de Administrador. Seu perfil atual é de Líder Operacional.
+            Esta funcionalidade requer privilégios de Administrador ou Gerência. Seu perfil atual é de Líder Operacional.
           </p>
           <button
             onClick={() => setActiveTab('inicio')}
@@ -71,6 +74,8 @@ export const AppLayout: React.FC = () => {
         return <UsersManagementView />;
       case 'admin-lideres':
         return <LeadersManagementView />;
+      case 'admin-projetos':
+        return <ProjectsManagementView />;
       case 'meu-perfil':
         return <UserProfileView />;
       default:
@@ -92,7 +97,6 @@ export const AppLayout: React.FC = () => {
         <Header
           onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           onOpenDatabaseSchema={() => setSchemaModalOpen(true)}
-          onOpenEmailInbox={() => setEmailInboxOpen(true)}
         />
 
         {/* Main View Container */}
@@ -117,11 +121,6 @@ export const AppLayout: React.FC = () => {
       <DatabaseSchemaModal
         isOpen={schemaModalOpen}
         onClose={() => setSchemaModalOpen(false)}
-      />
-
-      <EmailSimulationInbox
-        isOpen={emailInboxOpen}
-        onClose={() => setEmailInboxOpen(false)}
       />
     </div>
   );

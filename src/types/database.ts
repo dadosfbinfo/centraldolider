@@ -3,11 +3,11 @@
  * Compatível com Supabase / PostgreSQL e Store Local Reativo
  */
 
-export type UserRole = 'ADMINISTRADOR' | 'LIDER';
+export type UserRole = 'ADMINISTRADOR' | 'GERENCIA' | 'LIDER';
 export type ConfirmationStatus = 'CONFIRMADO' | 'PENDENTE';
 
 export type TaskPriority = 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
-export type TaskStatus = 'PROGRAMADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'ATRASADA' | 'BLOQUEADA' | 'CANCELADA';
+export type TaskStatus = 'PROGRAMADA' | 'EM_ANDAMENTO' | 'AGUARDANDO_VALIDACAO' | 'CONCLUIDA' | 'ATRASADA' | 'BLOQUEADA' | 'CANCELADA';
 export type TaskRecurrence = 'UMA_VEZ' | 'DIARIA' | 'DIAS_UTEIS' | 'SEMANAL' | 'MENSAL' | 'PERSONALIZADA';
 
 export type TaskEvidenceType = 
@@ -90,6 +90,9 @@ export type NotificationType =
   | 'CADASTRO_CONFIRMADO' 
   | 'OS_BLOQUEADA'
   | 'OS_CONCLUIDA'
+  | 'OS_AGUARDANDO_VALIDACAO'
+  | 'OS_APROVADA'
+  | 'OS_RECUSADA'
   | 'SISTEMA';
 
 // 1. Tabela: usuarios / perfis
@@ -101,6 +104,8 @@ export interface UsuarioPerfil {
   status_confirmacao: ConfirmationStatus;
   unidade_id?: string;
   unidade_nome?: string;
+  projeto_id?: string;
+  projeto_nome?: string;
   cargo?: string;
   telefone?: string;
   avatar_url?: string;
@@ -115,31 +120,39 @@ export interface Lider {
   usuario_id: string;
   nome: string;
   email: string;
-  matricula: string;
+  matricula?: string;
   cargo: string;
   unidade: string;
   unidade_id?: string;
-  regional: string;
+  projeto?: string;
+  projeto_id?: string;
+  regional?: string;
   gestor: string;
+  gestores_imediatos_ids?: string[]; // Multiple GERENCIA user IDs
+  gestores_imediatos_nomes?: string[];
+  projetos_ids?: string[]; // Multiple project IDs
+  projetos_nomes?: string[];
   status: LeaderStatus;
   telefone?: string;
   created_at: string;
   updated_at: string;
 }
 
-// 3. Tabela: unidades
-export interface Unidade {
+// 3. Tabela: projetos (anteriormente unidades)
+export interface Projeto {
   id: string;
   nome: string;
-  regional: string;
-  codigo: string;
   status: 'ATIVA' | 'INATIVA';
+  created_at: string;
+  regional?: string;
+  codigo?: string;
   cidade?: string;
   estado?: string;
   endereco?: string;
   responsavel_nome?: string;
-  created_at: string;
 }
+
+export type Unidade = Projeto;
 
 // 4. Tabela: categorias
 export interface Categoria {
@@ -149,6 +162,13 @@ export interface Categoria {
   descricao?: string;
   tipo: 'OPERACIONAL' | 'SEGURANCA' | 'QUALIDADE' | 'ADMINISTRATIVO' | 'OUTROS';
   created_at: string;
+}
+
+export interface AprovacaoValidador {
+  validador_id: string;
+  validador_nome: string;
+  validador_role: UserRole;
+  data_validacao: string;
 }
 
 // 5. Tabela: tarefas_os (Ordem de Serviço)
@@ -161,7 +181,17 @@ export interface TarefaOS {
   responsavel_email?: string;
   responsavel_cargo?: string;
   unidade_id?: string;
-  unidade: string; // Nome da unidade
+  unidade: string; // Nome do projeto/unidade
+  projeto_id?: string;
+  projeto?: string;
+  projetos_ids?: string[]; // Multiple project IDs
+  projetos_nomes?: string[];
+  lideres_ids?: string[]; // Multiple automatically assigned leader IDs
+  lideres_nomes?: string[];
+  validadores_ids?: string[]; // Designated validator user IDs (ADMINISTRADOR or GERENCIA)
+  validadores_nomes?: string[];
+  validacoes_aprovadas?: AprovacaoValidador[]; // Individual approvals from each designated validator
+  tipo_operacao?: string; // Preventiva, Corretiva, Inspeção, Auditoria, Rotina Operacional, Treinamento, Outros
   data: string; // YYYY-MM-DD
   horario: string; // HH:mm
   prazo: string; // YYYY-MM-DDTHH:mm ou ISO
@@ -185,6 +215,14 @@ export interface TarefaOS {
   data_conclusao?: string;
   tempo_execucao_minutos?: number;
   observacoes_conclusao?: string;
+  validado_por_id?: string;
+  validado_por_nome?: string;
+  validado_por_role?: UserRole;
+  data_validacao?: string;
+  motivo_recusa?: string;
+  recusado_por_id?: string;
+  recusado_por_nome?: string;
+  data_recusa?: string;
   parent_os_id?: string;
   created_at: string;
   updated_at: string;
@@ -193,6 +231,18 @@ export interface TarefaOS {
 // 6. Tabela: metas
 export type GoalPeriodicity = 'DIARIA' | 'SEMANAL' | 'MENSAL';
 export type GoalDirection = 'MAIOR_MELHOR' | 'MENOR_MELHOR'; // Ex: Absenteísmo e Perdas = MENOR_MELHOR; Produção e Atendimento = MAIOR_MELHOR
+
+export interface ApontamentoMeta {
+  id: string;
+  meta_id: string;
+  valor: number;
+  data_referencia: 'HOJE' | 'DIA_UTIL_ANTERIOR';
+  data_efetiva: string; // YYYY-MM-DD
+  data_registro: string; // ISO
+  autor_id?: string;
+  autor_nome?: string;
+  observacao?: string;
+}
 
 export interface Meta {
   id: string;
@@ -206,11 +256,19 @@ export interface Meta {
   data_fim?: string; // YYYY-MM-DD
   unidade_id?: string;
   unidade_nome?: string;
+  projeto_id?: string;
+  projeto_nome?: string;
+  projetos_ids?: string[]; // Multiple project IDs
+  projetos_nomes?: string[];
   lider_id?: string;
   lider_nome?: string;
+  lideres_ids?: string[]; // Multiple automatically assigned leader IDs
+  lideres_nomes?: string[];
   direcao_melhor?: GoalDirection; // Padrão: MAIOR_MELHOR
   descricao?: string;
   status: 'EM_ANDAMENTO' | 'ATINGIDA' | 'NAO_ATINGIDA';
+  historico_apontamentos?: ApontamentoMeta[];
+  data_ultimo_apontamento?: string;
   created_at: string;
   updated_at: string;
 }
@@ -235,7 +293,8 @@ export interface Relatorio {
   data_publicacao: string; // YYYY-MM-DD
   publicado: boolean; // Administrador pode publicar ou retirar publicação sem excluir
   publico_tipo: ReportAudienceType; // TODOS, UNIDADES, LIDERES
-  unidades_alvo?: string[]; // IDs das unidades com acesso (se publico_tipo === 'UNIDADES' ou múltiplos)
+  unidades_alvo?: string[]; // IDs das unidades/projetos com acesso (se publico_tipo === 'UNIDADES' ou múltiplos)
+  projetos_alvo?: string[];
   lideres_alvo?: string[]; // IDs dos líderes com acesso (se publico_tipo === 'LIDERES' ou múltiplos)
   descricao: string;
   arquivo_pdf_nome: string;
@@ -250,20 +309,33 @@ export interface Relatorio {
 }
 
 // 8. Tabela: calendario_eventos
+export interface TipoEventoConfig {
+  id: string;
+  nome: string;
+  cor: string;
+  descricao?: string;
+  is_default?: boolean;
+}
+
 export interface CalendarioEvento {
   id: string;
   titulo: string;
-  tipo: EventType;
+  tipo: EventType | string;
+  tipo_custom_nome?: string;
+  cor_custom?: string;
   data: string; // YYYY-MM-DD
   horario_inicio: string; // HH:mm
   horario_fim?: string; // HH:mm
   dia_inteiro?: boolean;
   unidade_id?: string;
   unidade_nome?: string;
+  projeto_id?: string;
+  projeto_nome?: string;
   lider_id?: string;
   lider_nome?: string;
   publico_tipo?: 'TODOS' | 'UNIDADES' | 'LIDERES';
   unidades_alvo?: string[];
+  projetos_alvo?: string[];
   lideres_alvo?: string[];
   descricao?: string;
   local?: string;

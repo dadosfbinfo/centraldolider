@@ -19,13 +19,11 @@ import { Notificacao, UsuarioPerfil } from '../../types/database';
 interface HeaderProps {
   onToggleMobileSidebar: () => void;
   onOpenDatabaseSchema: () => void;
-  onOpenEmailInbox: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onToggleMobileSidebar,
   onOpenDatabaseSchema,
-  onOpenEmailInbox,
 }) => {
   const { currentUser, switchActiveUser, allUsers, activeTab, setActiveTab } = useAuth();
   
@@ -74,7 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleMarkAllRead = () => {
     if (currentUser) {
-      dbStore.markAllNotificationsRead(currentUser.id);
+      dbStore.markAllNotificationsRead(currentUser.role === 'ADMINISTRADOR' ? undefined : currentUser.id);
+      loadNotifications();
     }
   };
 
@@ -144,6 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'meu-perfil': return '👤 Meu Perfil';
       case 'admin-usuarios': return '👥 Gestão de Usuários';
       case 'admin-lideres': return '👔 Gestão de Líderes';
+      case 'admin-projetos': return '📁 Gestão de Projetos';
       case 'admin-tarefas': return '📋 Painel de Tarefas / OS';
       case 'admin-metas': return '🎯 Gestão de Metas';
       case 'admin-relatorios': return '📊 Gestão de Relatórios';
@@ -182,16 +182,6 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Database className="w-3.5 h-3.5" />
           <span>Banco Supabase</span>
-        </button>
-
-        {/* Email Inbox Button */}
-        <button
-          onClick={onOpenEmailInbox}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#edf3fc] text-[#5B7DBE] hover:bg-[#dfeaf8] transition border border-[#5B7DBE]/20"
-          title="Caixa de E-mails Simulada"
-        >
-          <Mail className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">E-mails</span>
         </button>
 
         {/* Notification Bell Dropdown */}
@@ -318,7 +308,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {currentUser?.nome?.split(' ')[0]}
               </span>
               <span className="text-[10px] font-semibold text-[#C76B4A]">
-                {currentUser?.role === 'ADMINISTRADOR' ? 'Admin' : 'Líder'}
+                {currentUser?.role === 'ADMINISTRADOR' ? 'Admin' : currentUser?.role === 'GERENCIA' ? 'Gerência' : 'Líder'}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
@@ -331,13 +321,15 @@ export const Header: React.FC<HeaderProps> = ({
                   Alternar Usuário de Teste:
                 </span>
                 <span className="text-[10px] text-gray-500">
-                  Teste a experiência em ambos os papéis com 1 clique.
+                  Teste a experiência em diferentes papéis com 1 clique.
                 </span>
               </div>
 
               <div className="py-1 space-y-1 max-h-60 overflow-y-auto">
                 {allUsers.map((u) => {
                   const isCurrent = currentUser?.id === u.id;
+                  const roleLabel = u.role === 'ADMINISTRADOR' ? 'Administrador' : u.role === 'GERENCIA' ? 'Gerência' : 'Líder';
+                  const roleEmoji = u.role === 'ADMINISTRADOR' ? '👑' : u.role === 'GERENCIA' ? '💼' : '👔';
                   return (
                     <button
                       key={u.id}
@@ -353,12 +345,12 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       <div className="flex items-center gap-2 truncate">
                         <span className="text-sm">
-                          {u.role === 'ADMINISTRADOR' ? '👑' : '👔'}
+                          {roleEmoji}
                         </span>
                         <div className="truncate">
                           <span className="block truncate">{u.nome}</span>
                           <span className="text-[10px] text-gray-400 block truncate">
-                            {u.role} • {u.status_confirmacao}
+                            {roleLabel} • {u.status_confirmacao}
                           </span>
                         </div>
                       </div>
