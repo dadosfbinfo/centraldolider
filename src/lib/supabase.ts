@@ -35,12 +35,16 @@ export const SUPABASE_SQL_SCHEMA = `-- =========================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. TABELA: UNIDADES
+-- 1. TABELA: UNIDADES / PROJETOS
 CREATE TABLE IF NOT EXISTS public.unidades (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     nome VARCHAR(255) NOT NULL,
-    regional VARCHAR(100) NOT NULL,
+    regional VARCHAR(100),
     codigo VARCHAR(50) UNIQUE NOT NULL,
+    cidade VARCHAR(100),
+    estado VARCHAR(50),
+    endereco TEXT,
+    responsavel_nome VARCHAR(255),
     status VARCHAR(20) DEFAULT 'ATIVA' CHECK (status IN ('ATIVA', 'INATIVA')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -50,10 +54,12 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email VARCHAR(255) UNIQUE NOT NULL,
     nome VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'LIDER' CHECK (role IN ('ADMINISTRADOR', 'LIDER')),
+    role VARCHAR(50) NOT NULL DEFAULT 'LIDER' CHECK (role IN ('ADMINISTRADOR', 'GERENCIA', 'LIDER')),
     status_confirmacao VARCHAR(50) NOT NULL DEFAULT 'PENDENTE' CHECK (status_confirmacao IN ('CONFIRMADO', 'PENDENTE')),
     unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
+    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_nome VARCHAR(255),
     cargo VARCHAR(100),
     telefone VARCHAR(50),
     avatar_url TEXT,
@@ -71,8 +77,15 @@ CREATE TABLE IF NOT EXISTS public.lideres (
     matricula VARCHAR(50) UNIQUE NOT NULL,
     cargo VARCHAR(100) NOT NULL,
     unidade VARCHAR(255) NOT NULL,
-    regional VARCHAR(100) NOT NULL,
+    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto VARCHAR(255),
+    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    regional VARCHAR(100),
     gestor VARCHAR(255) NOT NULL,
+    gestores_imediatos_ids TEXT[] DEFAULT '{}',
+    gestores_imediatos_nomes TEXT[] DEFAULT '{}',
+    projetos_ids TEXT[] DEFAULT '{}',
+    projetos_nomes TEXT[] DEFAULT '{}',
     status VARCHAR(50) DEFAULT 'ATIVO' CHECK (status IN ('ATIVO', 'INATIVO', 'AFASTADO')),
     telefone VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -96,21 +109,48 @@ CREATE TABLE IF NOT EXISTS public.tarefas_os (
     titulo VARCHAR(255) NOT NULL,
     responsavel_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
     responsavel_nome VARCHAR(255) NOT NULL,
+    responsavel_email VARCHAR(255),
+    responsavel_cargo VARCHAR(100),
+    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade VARCHAR(255) NOT NULL,
+    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto VARCHAR(255),
+    projetos_ids TEXT[] DEFAULT '{}',
+    projetos_nomes TEXT[] DEFAULT '{}',
+    lideres_ids TEXT[] DEFAULT '{}',
+    lideres_nomes TEXT[] DEFAULT '{}',
+    validadores_ids TEXT[] DEFAULT '{}',
+    validadores_nomes TEXT[] DEFAULT '{}',
+    validacoes_aprovadas JSONB DEFAULT '[]'::jsonb,
+    tipo_operacao VARCHAR(100) DEFAULT 'Rotina Operacional',
     data DATE NOT NULL,
     horario TIME NOT NULL,
-    prazo TIMESTAMP WITH TIME ZONE NOT NULL,
+    prazo TIMESTAMP WITH TIME ZONE,
     descricao TEXT NOT NULL,
     prioridade VARCHAR(20) DEFAULT 'MEDIA' CHECK (prioridade IN ('BAIXA', 'MEDIA', 'ALTA', 'CRITICA')),
     categoria_id UUID REFERENCES public.categorias(id) ON DELETE SET NULL,
     categoria_nome VARCHAR(100),
-    status VARCHAR(30) DEFAULT 'PENDENTE' CHECK (status IN ('PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA', 'ATRASADA', 'CANCELADA')),
-    tipo_conclusao_exigido VARCHAR(50) DEFAULT 'FOTO_EVIDENCIA' CHECK (tipo_conclusao_exigido IN ('FOTO_EVIDENCIA', 'CHECKLIST', 'ASSINATURA', 'TEXTO', 'SIMPLES')),
-    recorrencia VARCHAR(30) DEFAULT 'NENHUMA' CHECK (recorrencia IN ('NENHUMA', 'DIARIA', 'SEMANAL', 'MENSAL')),
+    categoria_cor VARCHAR(20),
+    status VARCHAR(30) DEFAULT 'PROGRAMADA' CHECK (status IN ('PROGRAMADA', 'EM_ANDAMENTO', 'AGUARDANDO_VALIDACAO', 'CONCLUIDA', 'ATRASADA', 'BLOQUEADA', 'CANCELADA')),
+    recorrencia VARCHAR(30) DEFAULT 'UMA_VEZ' CHECK (recorrencia IN ('UMA_VEZ', 'DIARIA', 'DIAS_UTEIS', 'SEMANAL', 'MENSAL', 'PERSONALIZADA')),
+    recorrencia_config JSONB,
+    requisitos_conclusao JSONB DEFAULT '[]'::jsonb,
+    evidencias JSONB DEFAULT '[]'::jsonb,
+    motivo_bloqueio TEXT,
+    data_bloqueio TIMESTAMP WITH TIME ZONE,
+    data_inicio TIMESTAMP WITH TIME ZONE,
     data_conclusao TIMESTAMP WITH TIME ZONE,
     tempo_execucao_minutos INTEGER,
-    evidencia_url TEXT,
     observacoes_conclusao TEXT,
+    validado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    validado_por_nome VARCHAR(255),
+    validado_por_role VARCHAR(50),
+    data_validacao TIMESTAMP WITH TIME ZONE,
+    motivo_recusa TEXT,
+    recusado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    recusado_por_nome VARCHAR(255),
+    data_recusa TIMESTAMP WITH TIME ZONE,
+    parent_os_id UUID REFERENCES public.tarefas_os(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -121,13 +161,26 @@ CREATE TABLE IF NOT EXISTS public.metas (
     indicador VARCHAR(255) NOT NULL,
     meta_valor NUMERIC(15,2) NOT NULL,
     valor_atual NUMERIC(15,2) DEFAULT 0.00,
-    unidade_medida VARCHAR(20) DEFAULT '%',
+    unidade_medida VARCHAR(50) DEFAULT '%',
+    tipo_periodo VARCHAR(20) DEFAULT 'MENSAL' CHECK (tipo_periodo IN ('DIARIA', 'SEMANAL', 'MENSAL')),
     periodo VARCHAR(100) NOT NULL,
+    data_inicio DATE,
+    data_fim DATE,
     unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
+    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_nome VARCHAR(255),
+    projetos_ids TEXT[] DEFAULT '{}',
+    projetos_nomes TEXT[] DEFAULT '{}',
     lider_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
     lider_nome VARCHAR(255),
+    lideres_ids TEXT[] DEFAULT '{}',
+    lideres_nomes TEXT[] DEFAULT '{}',
+    direcao_melhor VARCHAR(30) DEFAULT 'MAIOR_MELHOR' CHECK (direcao_melhor IN ('MAIOR_MELHOR', 'MENOR_MELHOR')),
+    descricao TEXT,
     status VARCHAR(30) DEFAULT 'EM_ANDAMENTO' CHECK (status IN ('EM_ANDAMENTO', 'ATINGIDA', 'NAO_ATINGIDA')),
+    historico_apontamentos JSONB DEFAULT '[]'::jsonb,
+    data_ultimo_apontamento TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -136,33 +189,55 @@ CREATE TABLE IF NOT EXISTS public.metas (
 CREATE TABLE IF NOT EXISTS public.relatorios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     titulo VARCHAR(255) NOT NULL,
-    tipo VARCHAR(50) NOT NULL,
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('DIARIO', 'SEMANAL', 'MENSAL')),
     periodo VARCHAR(100) NOT NULL,
     data_publicacao DATE NOT NULL,
-    publico_acesso VARCHAR(30) DEFAULT 'TODOS' CHECK (publico_acesso IN ('TODOS', 'ADMINISTRADOR', 'LIDER')),
+    publicado BOOLEAN DEFAULT TRUE,
+    publico_tipo VARCHAR(30) DEFAULT 'TODOS' CHECK (publico_tipo IN ('TODOS', 'UNIDADES', 'LIDERES')),
+    unidades_alvo TEXT[] DEFAULT '{}',
+    projetos_alvo TEXT[] DEFAULT '{}',
+    lideres_alvo TEXT[] DEFAULT '{}',
     descricao TEXT NOT NULL,
+    arquivo_pdf_nome VARCHAR(255),
     arquivo_pdf_url TEXT NOT NULL,
-    tamanho_arquivo VARCHAR(50),
+    arquivo_pdf_tamanho VARCHAR(50),
+    arquivo_pdf_conteudo TEXT,
     total_leituras INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    confirmacoes_leitura JSONB DEFAULT '[]'::jsonb,
+    leitores_confirmados TEXT[] DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 8. TABELA: CALENDARIO_EVENTOS
 CREATE TABLE IF NOT EXISTS public.calendario_eventos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     titulo VARCHAR(255) NOT NULL,
-    tipo VARCHAR(30) NOT NULL CHECK (tipo IN ('TAREFA', 'REUNIAO', 'RELATORIO', 'EVENTO', 'PENDENCIA')),
+    tipo VARCHAR(50) NOT NULL,
+    tipo_custom_nome VARCHAR(100),
+    cor_custom VARCHAR(20),
     data DATE NOT NULL,
     horario_inicio TIME NOT NULL,
     horario_fim TIME,
+    dia_inteiro BOOLEAN DEFAULT FALSE,
     unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
+    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_nome VARCHAR(255),
     lider_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
     lider_nome VARCHAR(255),
+    publico_tipo VARCHAR(30) DEFAULT 'TODOS' CHECK (publico_tipo IN ('TODOS', 'UNIDADES', 'LIDERES')),
+    unidades_alvo TEXT[] DEFAULT '{}',
+    projetos_alvo TEXT[] DEFAULT '{}',
+    lideres_alvo TEXT[] DEFAULT '{}',
     descricao TEXT,
     local VARCHAR(255),
+    link_reuniao TEXT,
+    criado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    criado_por_nome VARCHAR(255),
     status VARCHAR(30) DEFAULT 'AGENDADO' CHECK (status IN ('AGENDADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 9. TABELA: COMENTARIOS (Polimórfica para tarefas, metas, relatórios, eventos)
@@ -173,7 +248,7 @@ CREATE TABLE IF NOT EXISTS public.comentarios (
     autor_role VARCHAR(50) NOT NULL,
     autor_avatar TEXT,
     texto TEXT NOT NULL,
-    item_tipo VARCHAR(30) NOT NULL CHECK (item_tipo IN ('TAREFA', 'META', 'RELATORIO', 'EVENTO')),
+    item_tipo VARCHAR(30) NOT NULL CHECK (item_tipo IN ('TAREFA', 'META', 'RELATORIO', 'EVENTO', 'CALENDARIO')),
     item_id UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -186,6 +261,8 @@ CREATE TABLE IF NOT EXISTS public.notificacoes (
     titulo VARCHAR(255) NOT NULL,
     texto TEXT NOT NULL,
     lida BOOLEAN DEFAULT FALSE,
+    item_tipo VARCHAR(50),
+    item_id UUID,
     link_acao TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -205,6 +282,7 @@ CREATE TRIGGER update_usuarios_modtime BEFORE UPDATE ON public.usuarios FOR EACH
 CREATE TRIGGER update_lideres_modtime BEFORE UPDATE ON public.lideres FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 CREATE TRIGGER update_tarefas_os_modtime BEFORE UPDATE ON public.tarefas_os FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 CREATE TRIGGER update_metas_modtime BEFORE UPDATE ON public.metas FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+CREATE TRIGGER update_relatorios_modtime BEFORE UPDATE ON public.relatorios FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ==============================================================================
 -- SINCRONIZAÇÃO AUTOMÁTICA DE AUTH COM TABELA USUARIOS (PUBLIC.USUARIOS)
@@ -262,15 +340,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RLS: USUARIOS (Admin vê todos e altera tudo; Usuário autenticado vê seu próprio perfil)
-CREATE POLICY "Admins podem ver todos usuarios" ON public.usuarios FOR SELECT USING (public.is_admin() OR auth.uid() = id);
-CREATE POLICY "Admins podem atualizar todos usuarios" ON public.usuarios FOR UPDATE USING (public.is_admin() OR auth.uid() = id);
+-- Função auxiliar para verificar se é ADMINISTRADOR ou GERENCIA
+CREATE OR REPLACE FUNCTION public.is_admin_or_gerencia()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM public.usuarios
+        WHERE id = auth.uid() AND role IN ('ADMINISTRADOR', 'GERENCIA')
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RLS: USUARIOS (Admin/Gerência veem usuários; Líder vê seu perfil)
+CREATE POLICY "Leitura de usuarios" ON public.usuarios FOR SELECT USING (public.is_admin_or_gerencia() OR auth.uid() = id);
+CREATE POLICY "Atualizacao de usuarios" ON public.usuarios FOR UPDATE USING (public.is_admin() OR auth.uid() = id);
 CREATE POLICY "Admins podem deletar usuarios" ON public.usuarios FOR DELETE USING (public.is_admin());
 
--- RLS: TAREFAS_OS (Admin gerencia todas; Líder vê e atualiza as suas)
-CREATE POLICY "Tarefas leitura" ON public.tarefas_os FOR SELECT USING (public.is_admin() OR responsavel_id = auth.uid());
-CREATE POLICY "Tarefas criacao e edicao admin" ON public.tarefas_os FOR ALL USING (public.is_admin());
-CREATE POLICY "Lider atualiza status tarefa" ON public.tarefas_os FOR UPDATE USING (responsavel_id = auth.uid());
+-- RLS: TAREFAS_OS (Admin/Gerência gerenciam; Líder vê e executa as suas)
+CREATE POLICY "Tarefas leitura" ON public.tarefas_os FOR SELECT USING (public.is_admin_or_gerencia() OR responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids));
+CREATE POLICY "Tarefas criacao e edicao gestao" ON public.tarefas_os FOR ALL USING (public.is_admin_or_gerencia());
+CREATE POLICY "Lider atualiza status e evidencias tarefa" ON public.tarefas_os FOR UPDATE USING (responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids));
 
 -- RLS: NOTIFICACOES
 CREATE POLICY "Usuario gerencia suas notificacoes" ON public.notificacoes FOR ALL USING (usuario_id = auth.uid() OR public.is_admin());

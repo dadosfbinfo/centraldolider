@@ -27,10 +27,13 @@ interface ParsedTaskRow {
   prioridade: TaskPriority;
   projeto?: string;
   responsavel?: string;
+  validadores?: string;
   data: string;
   horario?: string;
   prazo?: string;
   categoria?: string;
+  recorrencia?: string;
+  exigencia_conclusao?: string;
   descricao?: string;
   isValid: boolean;
   validationError?: string;
@@ -67,24 +70,30 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
         'Título da Tarefa *': 'Auditoria de Abertura de Loja e Caixa',
         'Tipo da Operação': 'Rotina Operacional',
         'Prioridade (BAIXA, MEDIA, ALTA, CRITICA)': 'ALTA',
-        'Projeto': 'Unidade São Paulo - Matriz Pinheiros',
-        'Responsável (E-mail ou Nome)': 'mariana.costa@centraldolider.com.br',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros, Unidade Rio de Janeiro - Barra da Tijuca',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br, roberto.almeida@centraldolider.com.br',
+        'Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)': 'admin@centraldolider.com.br',
         'Data (YYYY-MM-DD) *': new Date().toISOString().split('T')[0],
         'Horário (HH:mm)': '08:00',
         'Prazo (YYYY-MM-DD)': new Date(Date.now() + 86400000).toISOString().split('T')[0],
         'Categoria': 'Rotina Operacional',
+        'Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)': 'UMA_VEZ',
+        'Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)': 'CHECKLIST',
         'Descrição': 'Conferir numerário em caixa e itens de segurança antes da abertura.',
       },
       {
         'Título da Tarefa *': 'Inspeção Semanal de Extintores e Iluminação',
         'Tipo da Operação': 'Preventiva',
         'Prioridade (BAIXA, MEDIA, ALTA, CRITICA)': 'MEDIA',
-        'Projeto': 'Unidade Rio de Janeiro - Barra da Tijuca',
-        'Responsável (E-mail ou Nome)': 'roberto.almeida@centraldolider.com.br',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade Rio de Janeiro - Barra da Tijuca',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'roberto.almeida@centraldolider.com.br',
+        'Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)': 'admin@centraldolider.com.br',
         'Data (YYYY-MM-DD) *': new Date().toISOString().split('T')[0],
         'Horário (HH:mm)': '10:30',
         'Prazo (YYYY-MM-DD)': new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
         'Categoria': 'Segurança & Saúde',
+        'Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)': 'SEMANAL',
+        'Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)': 'FOTO',
         'Descrição': 'Verificar lacres e manômetros de todos os extintores do piso.',
       },
     ];
@@ -153,15 +162,23 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
           }
 
           const projeto =
+            row['Projeto(s) (Nomes ou Códigos separados por vírgula)'] ||
             row['Projeto'] ||
             row['Unidade'] ||
             row['Projeto/Unidade'] ||
             '';
 
           const responsavel =
+            row['Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)'] ||
             row['Responsável (E-mail ou Nome)'] ||
             row['Responsável'] ||
             row['Líder'] ||
+            '';
+
+          const validadores =
+            row['Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)'] ||
+            row['Validador(es)'] ||
+            row['Gestores Validadores'] ||
             '';
 
           let data =
@@ -181,6 +198,15 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
           const horario = row['Horário (HH:mm)'] || row['Horario'] || row['Horário'] || '08:00';
           const prazo = row['Prazo (YYYY-MM-DD)'] || row['Prazo'] || '';
           const categoria = row['Categoria'] || 'Rotina Operacional';
+          const recorrencia =
+            row['Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)'] ||
+            row['Recorrência'] ||
+            'UMA_VEZ';
+          const exigencia_conclusao =
+            row['Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)'] ||
+            row['Exigência Conclusão'] ||
+            row['Exigência'] ||
+            'CHECKLIST';
           const descricao = row['Descrição'] || row['Descricao'] || '';
 
           let isValid = true;
@@ -200,10 +226,13 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
             prioridade,
             projeto,
             responsavel,
+            validadores,
             data,
             horario,
             prazo,
             categoria,
+            recorrencia,
+            exigencia_conclusao,
             descricao,
             isValid,
             validationError,
@@ -242,24 +271,131 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
     const createdIds: string[] = [];
 
     validRows.forEach((row) => {
-      // Resolve project
-      const matchedUnit = units.find(
-        (u) =>
-          u.nome.toLowerCase().includes((row.projeto || '').toLowerCase()) ||
-          (u.codigo && u.codigo.toLowerCase() === (row.projeto || '').toLowerCase())
-      ) || units[0];
+      // Resolve projects
+      const projTokens = (row.projeto || '')
+        .split(/[,;/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const matchedProjIds: string[] = [];
+      const matchedProjNomes: string[] = [];
+
+      projTokens.forEach((tok) => {
+        const found = units.find(
+          (u) =>
+            u.nome.toLowerCase().includes(tok.toLowerCase()) ||
+            (u.codigo && u.codigo.toLowerCase() === tok.toLowerCase())
+        );
+        if (found) {
+          if (!matchedProjIds.includes(found.id)) {
+            matchedProjIds.push(found.id);
+            matchedProjNomes.push(found.nome);
+          }
+        }
+      });
+
+      if (matchedProjIds.length === 0 && units.length > 0) {
+        matchedProjIds.push(units[0].id);
+        matchedProjNomes.push(units[0].nome);
+      }
 
       // Resolve category
       const matchedCat = categories.find((c) =>
         c.nome.toLowerCase().includes((row.categoria || '').toLowerCase())
       ) || categories[0];
 
-      // Resolve leader
-      const matchedLeader = leaders.find(
-        (l) =>
-          l.email.toLowerCase() === (row.responsavel || '').toLowerCase() ||
-          l.nome.toLowerCase().includes((row.responsavel || '').toLowerCase())
-      ) || leaders[0];
+      // Resolve leaders
+      const leaderTokens = (row.responsavel || '')
+        .split(/[,;/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const matchedLeaderIds: string[] = [];
+      const matchedLeaderNomes: string[] = [];
+
+      leaderTokens.forEach((tok) => {
+        const found = leaders.find(
+          (l) =>
+            l.email.toLowerCase() === tok.toLowerCase() ||
+            l.nome.toLowerCase().includes(tok.toLowerCase())
+        );
+        if (found) {
+          const lId = found.usuario_id || found.id;
+          if (!matchedLeaderIds.includes(lId)) {
+            matchedLeaderIds.push(lId);
+            matchedLeaderNomes.push(found.nome);
+          }
+        }
+      });
+
+      if (matchedLeaderIds.length === 0 && leaders.length > 0) {
+        const defaultLeader = leaders[0];
+        matchedLeaderIds.push(defaultLeader.usuario_id || defaultLeader.id);
+        matchedLeaderNomes.push(defaultLeader.nome);
+      }
+
+      // Resolve validators
+      const validatorTokens = (row.validadores || '')
+        .split(/[,;/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const matchedValIds: string[] = [];
+      const matchedValNomes: string[] = [];
+
+      validatorTokens.forEach((tok) => {
+        const foundUser = users.find(
+          (u) =>
+            u.email.toLowerCase() === tok.toLowerCase() ||
+            u.nome.toLowerCase().includes(tok.toLowerCase())
+        );
+        if (foundUser) {
+          if (!matchedValIds.includes(foundUser.id)) {
+            matchedValIds.push(foundUser.id);
+            matchedValNomes.push(foundUser.nome);
+          }
+        }
+      });
+
+      // Requirement type mapping
+      const reqTypeUpper = (row.exigencia_conclusao || 'CHECKLIST').toUpperCase().trim();
+      let reqType: 'CHECKLIST' | 'FOTO' | 'TEXTO' | 'NUMERO' | 'ARQUIVO' | 'SIMPLES' = 'CHECKLIST';
+      if (['FOTO', 'TEXTO', 'NUMERO', 'ARQUIVO', 'SIMPLES', 'CHECKLIST'].includes(reqTypeUpper)) {
+        reqType = reqTypeUpper as any;
+      }
+
+      const reqId = 'req-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 3);
+      let requirementObj: any = {
+        id: reqId,
+        tipo: reqType,
+        titulo:
+          reqType === 'FOTO'
+            ? 'Registro Fotográfico da Execução'
+            : reqType === 'TEXTO'
+            ? 'Relatório em Texto'
+            : reqType === 'NUMERO'
+            ? 'Valor Medido em Campo'
+            : reqType === 'ARQUIVO'
+            ? 'Anexo de Documento de Evidência'
+            : reqType === 'SIMPLES'
+            ? 'Confirmação de Conclusão Operacional'
+            : 'Conferência Operacional Padrão',
+        obrigatorio: true,
+      };
+
+      if (reqType === 'CHECKLIST') {
+        requirementObj.checklist_itens = [
+          { id: 'c1', texto: 'Verificação visual dos padrões de segurança', concluido: false },
+          { id: 'c2', texto: 'Validação e registro em checklist', concluido: false },
+        ];
+      }
+
+      // Recurrence mapping
+      const recUpper = (row.recorrencia || 'UMA_VEZ').toUpperCase().trim();
+      let recorrencia: any = 'UMA_VEZ';
+      if (['UMA_VEZ', 'DIARIA', 'DIAS_UTEIS', 'SEMANAL', 'MENSAL'].includes(recUpper)) {
+        recorrencia = recUpper;
+      }
 
       const created = dbStore.createTask({
         titulo: row.titulo,
@@ -268,31 +404,26 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
         categoria_id: matchedCat?.id || 'cat-op',
         categoria_nome: matchedCat?.nome || 'Operacional',
         categoria_cor: matchedCat?.cor || '#C76B4A',
-        unidade_id: matchedUnit?.id || 'unit-sp-01',
-        unidade: matchedUnit?.nome || 'Matriz Geral',
-        projeto_id: matchedUnit?.id || 'unit-sp-01',
-        projeto: matchedUnit?.nome || 'Matriz Geral',
-        responsavel_id: matchedLeader?.usuario_id || 'user-lider-sp',
-        responsavel_nome: matchedLeader?.nome || 'Mariana Costa',
-        responsavel_cargo: matchedLeader?.cargo || 'Líder Operacional',
+        unidade_id: matchedProjIds[0],
+        unidade: matchedProjNomes[0],
+        projeto_id: matchedProjIds[0],
+        projeto: matchedProjNomes[0],
+        projetos_ids: matchedProjIds,
+        projetos_nomes: matchedProjNomes,
+        responsavel_id: matchedLeaderIds[0],
+        responsavel_nome: matchedLeaderNomes[0],
+        lideres_ids: matchedLeaderIds,
+        lideres_nomes: matchedLeaderNomes,
+        validadores_ids: matchedValIds,
+        validadores_nomes: matchedValNomes,
+        responsavel_cargo: 'Líder Operacional',
         data: row.data,
         horario: row.horario || '08:00',
         prazo: row.prazo || undefined,
         descricao: row.descricao || undefined,
         status: 'PROGRAMADA',
-        recorrencia: 'UMA_VEZ',
-        requisitos_conclusao: [
-          {
-            id: 'req-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 3),
-            tipo: 'CHECKLIST',
-            titulo: 'Conferência Operacional Padrão',
-            obrigatorio: true,
-            checklist_itens: [
-              { id: 'c1', texto: 'Verificação visual dos padrões', concluido: false },
-              { id: 'c2', texto: 'Registro fotográfico ou validação em checklist', concluido: false },
-            ],
-          },
-        ],
+        recorrencia: recorrencia,
+        requisitos_conclusao: [requirementObj],
       });
 
       if (created?.id) {

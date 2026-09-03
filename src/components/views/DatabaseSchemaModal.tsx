@@ -28,43 +28,43 @@ export const DatabaseSchemaModal: React.FC<DatabaseSchemaModalProps> = ({ isOpen
   const tablesList = [
     {
       name: 'public.usuarios',
-      desc: 'Perfis de usuários, roles (ADMINISTRADOR/LIDER), status de confirmação e unidade.',
-      columns: ['id (UUID PK)', 'email (VARCHAR UNIQUE)', 'nome (VARCHAR)', 'role (VARCHAR)', 'status_confirmacao (VARCHAR)', 'unidade_id (UUID FK)', 'cargo', 'telefone', 'created_at', 'updated_at'],
+      desc: 'Perfis de usuários, roles (ADMINISTRADOR, GERENCIA, LIDER), status de confirmação e projeto/unidade.',
+      columns: ['id (UUID PK)', 'email (VARCHAR UNIQUE)', 'nome (VARCHAR)', 'role (VARCHAR)', 'status_confirmacao (VARCHAR)', 'unidade_id / projeto_id (UUID FK)', 'cargo', 'telefone', 'created_at', 'updated_at'],
     },
     {
       name: 'public.lideres',
-      desc: 'Cadastro operacional de líderes de unidades com matrícula, cargo, regional e gestor.',
-      columns: ['id (UUID PK)', 'usuario_id (UUID FK)', 'nome (VARCHAR)', 'email', 'matricula (VARCHAR UNIQUE)', 'cargo', 'unidade', 'regional', 'gestor', 'status', 'telefone', 'created_at'],
+      desc: 'Cadastro operacional de líderes vinculados a múltiplos projetos e gerências diretas.',
+      columns: ['id (UUID PK)', 'usuario_id (UUID FK)', 'nome', 'email', 'matricula', 'cargo', 'projeto_id / unidade_id', 'gestores_imediatos_ids (TEXT[])', 'projetos_ids (TEXT[])', 'status', 'telefone'],
     },
     {
       name: 'public.unidades',
-      desc: 'Tabela auxiliar de unidades/filiais operacionais.',
-      columns: ['id (UUID PK)', 'nome (VARCHAR)', 'regional (VARCHAR)', 'codigo (VARCHAR UNIQUE)', 'status', 'created_at'],
+      desc: 'Projetos e unidades operacionais com regional, código, responsável e localização.',
+      columns: ['id (UUID PK)', 'nome (VARCHAR)', 'regional', 'codigo (VARCHAR UNIQUE)', 'cidade', 'estado', 'endereco', 'responsavel_nome', 'status', 'created_at'],
     },
     {
       name: 'public.categorias',
-      desc: 'Tabela auxiliar de categorias para Ordens de Serviço (Operacional, Segurança, etc.).',
+      desc: 'Categorias para Ordens de Serviço (Operacional, Segurança & Saúde, Qualidade & Auditoria, etc.).',
       columns: ['id (UUID PK)', 'nome (VARCHAR)', 'cor (VARCHAR)', 'descricao (TEXT)', 'tipo', 'created_at'],
     },
     {
       name: 'public.tarefas_os',
-      desc: 'Ordens de Serviço com rastreabilidade completa (quem recebeu, quando, prazo, execução, evidências).',
-      columns: ['id (UUID PK)', 'numero_os (VARCHAR UNIQUE)', 'titulo (VARCHAR)', 'responsavel_id (UUID FK)', 'unidade', 'data', 'horario', 'prazo', 'prioridade', 'categoria_id (UUID FK)', 'status', 'tipo_conclusao_exigido', 'recorrencia', 'tempo_execucao_minutos', 'created_at'],
+      desc: 'Ordens de Serviço com múltiplos projetos/líderes, validadores (Gerência/Admin), tipo de operação, prazos, fluxo de aprovação e evidências em JSONB.',
+      columns: ['id (UUID PK)', 'numero_os (UNIQUE)', 'titulo', 'tipo_operacao', 'responsavel_id', 'projetos_ids (TEXT[])', 'lideres_ids (TEXT[])', 'validadores_ids (TEXT[])', 'validacoes_aprovadas (JSONB)', 'data', 'prazo', 'prioridade', 'categoria_id', 'status', 'requisitos_conclusao (JSONB)', 'evidencias (JSONB)'],
     },
     {
       name: 'public.metas',
-      desc: 'Metas operacionais e indicadores por unidade e líder.',
-      columns: ['id (UUID PK)', 'indicador (VARCHAR)', 'meta_valor (NUMERIC)', 'valor_atual (NUMERIC)', 'unidade_medida', 'periodo', 'unidade_id (UUID FK)', 'lider_id (UUID FK)', 'status', 'created_at'],
+      desc: 'Metas operacionais com múltiplos projetos/líderes, direção de melhoria (MAIOR_MELHOR / MENOR_MELHOR) e histórico de apontamentos.',
+      columns: ['id (UUID PK)', 'indicador', 'meta_valor', 'valor_atual', 'unidade_medida', 'tipo_periodo', 'periodo', 'projetos_ids (TEXT[])', 'lideres_ids (TEXT[])', 'direcao_melhor', 'historico_apontamentos (JSONB)', 'status'],
     },
     {
       name: 'public.relatorios',
-      desc: 'Relatórios operacionais e manuais com confirmação de leitura por líderes.',
-      columns: ['id (UUID PK)', 'titulo (VARCHAR)', 'tipo', 'periodo', 'data_publicacao', 'publico_acesso', 'descricao', 'arquivo_pdf_url', 'total_leituras', 'created_at'],
+      desc: 'Relatórios operacionais com controle de publicação, público-alvo (projetos/líderes) e rastreio de leitura.',
+      columns: ['id (UUID PK)', 'titulo', 'tipo', 'periodo', 'data_publicacao', 'publicado (BOOL)', 'publico_tipo', 'unidades_alvo (TEXT[])', 'lideres_alvo (TEXT[])', 'arquivo_pdf_url', 'confirmacoes_leitura (JSONB)'],
     },
     {
       name: 'public.calendario_eventos',
-      desc: 'Eventos de calendário operacional, vistorias, reuniões e pendências.',
-      columns: ['id (UUID PK)', 'titulo (VARCHAR)', 'tipo', 'data', 'horario_inicio', 'horario_fim', 'unidade_id (UUID FK)', 'lider_id (UUID FK)', 'status', 'created_at'],
+      desc: 'Eventos e comunicados de calendário operacional com alvos por projeto e líder.',
+      columns: ['id (UUID PK)', 'titulo', 'tipo', 'data', 'horario_inicio', 'horario_fim', 'dia_inteiro', 'projeto_id', 'publico_tipo', 'status', 'created_at'],
     },
     {
       name: 'public.comentarios',
@@ -73,8 +73,8 @@ export const DatabaseSchemaModal: React.FC<DatabaseSchemaModalProps> = ({ isOpen
     },
     {
       name: 'public.notificacoes',
-      desc: 'Notificações e avisos de sistema por usuário com rastreio de leitura.',
-      columns: ['id (UUID PK)', 'usuario_id (UUID FK)', 'tipo', 'titulo', 'texto', 'lida (BOOLEAN)', 'link_acao', 'created_at'],
+      desc: 'Notificações e avisos do sistema por usuário com controle de leitura.',
+      columns: ['id (UUID PK)', 'usuario_id (UUID FK)', 'tipo', 'titulo', 'texto', 'lida (BOOLEAN)', 'item_tipo', 'item_id', 'link_acao', 'created_at'],
     },
   ];
 

@@ -66,26 +66,26 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
       {
         'Indicador *': 'Cumprimento de SLA de Ordens de Serviço',
         'Meta Valor *': 95,
-        'Unidade de Medida (%, R$, un, horas)': '%',
+        'Unidade de Medida (%, R$, un, horas, pts)': '%',
         'Tipo de Período (MENSAL, SEMANAL, DIARIA)': 'MENSAL',
         'Período (Ex: Setembro/2026) *': 'Setembro/2026',
         'Data Início (YYYY-MM-DD)': '2026-09-01',
         'Data Fim (YYYY-MM-DD)': '2026-09-30',
-        'Projeto': 'Unidade São Paulo - Matriz Pinheiros',
-        'Líder Responsável (E-mail ou Nome)': 'mariana.costa@centraldolider.com.br',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros, Unidade Rio de Janeiro - Barra da Tijuca',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br, roberto.almeida@centraldolider.com.br',
         'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MAIOR_MELHOR',
         'Descrição': 'Meta de entrega das ordens de serviço dentro do prazo estipulado.',
       },
       {
         'Indicador *': 'Índice de Perdas Operacionais / Avarias',
         'Meta Valor *': 1.5,
-        'Unidade de Medida (%, R$, un, horas)': '%',
+        'Unidade de Medida (%, R$, un, horas, pts)': '%',
         'Tipo de Período (MENSAL, SEMANAL, DIARIA)': 'MENSAL',
         'Período (Ex: Setembro/2026) *': 'Setembro/2026',
         'Data Início (YYYY-MM-DD)': '2026-09-01',
         'Data Fim (YYYY-MM-DD)': '2026-09-30',
-        'Projeto': 'Unidade Rio de Janeiro - Barra da Tijuca',
-        'Líder Responsável (E-mail ou Nome)': 'roberto.almeida@centraldolider.com.br',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade Rio de Janeiro - Barra da Tijuca',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'roberto.almeida@centraldolider.com.br',
         'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MENOR_MELHOR',
         'Descrição': 'Redução de perdas de estoque e manuseio no turno.',
       },
@@ -132,7 +132,11 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
             '';
 
           const meta_valor = parseFloat(row['Meta Valor *'] || row['Meta Valor'] || row['Valor'] || '0');
-          const unidade_medida = row['Unidade de Medida (%, R$, un, horas)'] || row['Unidade de Medida'] || '%';
+          const unidade_medida =
+            row['Unidade de Medida (%, R$, un, horas, pts)'] ||
+            row['Unidade de Medida (%, R$, un, horas)'] ||
+            row['Unidade de Medida'] ||
+            '%';
 
           let tipoPeriodoRaw = (
             row['Tipo de Período (MENSAL, SEMANAL, DIARIA)'] ||
@@ -152,8 +156,17 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
           const periodo = row['Período (Ex: Setembro/2026) *'] || row['Período'] || row['Periodo'] || 'Setembro/2026';
           const data_inicio = row['Data Início (YYYY-MM-DD)'] || row['Data Início'] || '';
           const data_fim = row['Data Fim (YYYY-MM-DD)'] || row['Data Fim'] || '';
-          const projeto = row['Projeto'] || row['Unidade'] || '';
-          const lider = row['Líder Responsável (E-mail ou Nome)'] || row['Líder'] || row['Responsável'] || '';
+          const projeto =
+            row['Projeto(s) (Nomes ou Códigos separados por vírgula)'] ||
+            row['Projeto'] ||
+            row['Unidade'] ||
+            '';
+          const lider =
+            row['Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)'] ||
+            row['Líder Responsável (E-mail ou Nome)'] ||
+            row['Líder'] ||
+            row['Responsável'] ||
+            '';
 
           const dirRaw = (row['Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)'] || row['Direção'] || 'MAIOR_MELHOR')
             .toString()
@@ -220,17 +233,63 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
     const createdIds: string[] = [];
 
     validRows.forEach((row) => {
-      const matchedUnit = units.find(
-        (u) =>
-          u.nome.toLowerCase().includes((row.projeto || '').toLowerCase()) ||
-          (u.codigo && u.codigo.toLowerCase() === (row.projeto || '').toLowerCase())
-      ) || units[0];
+      // Parse multi projects
+      const projTokens = (row.projeto || '')
+        .split(/[,;/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-      const matchedLeader = leaders.find(
-        (l) =>
-          l.email.toLowerCase() === (row.lider || '').toLowerCase() ||
-          l.nome.toLowerCase().includes((row.lider || '').toLowerCase())
-      ) || leaders[0];
+      const matchedProjIds: string[] = [];
+      const matchedProjNomes: string[] = [];
+
+      projTokens.forEach((tok) => {
+        const found = units.find(
+          (u) =>
+            u.nome.toLowerCase().includes(tok.toLowerCase()) ||
+            (u.codigo && u.codigo.toLowerCase() === tok.toLowerCase())
+        );
+        if (found) {
+          if (!matchedProjIds.includes(found.id)) {
+            matchedProjIds.push(found.id);
+            matchedProjNomes.push(found.nome);
+          }
+        }
+      });
+
+      if (matchedProjIds.length === 0 && units.length > 0) {
+        matchedProjIds.push(units[0].id);
+        matchedProjNomes.push(units[0].nome);
+      }
+
+      // Parse multi leaders
+      const leaderTokens = (row.lider || '')
+        .split(/[,;/]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const matchedLeaderIds: string[] = [];
+      const matchedLeaderNomes: string[] = [];
+
+      leaderTokens.forEach((tok) => {
+        const found = leaders.find(
+          (l) =>
+            l.email.toLowerCase() === tok.toLowerCase() ||
+            l.nome.toLowerCase().includes(tok.toLowerCase())
+        );
+        if (found) {
+          const lId = found.usuario_id || found.id;
+          if (!matchedLeaderIds.includes(lId)) {
+            matchedLeaderIds.push(lId);
+            matchedLeaderNomes.push(found.nome);
+          }
+        }
+      });
+
+      if (matchedLeaderIds.length === 0 && leaders.length > 0) {
+        const defaultLeader = leaders[0];
+        matchedLeaderIds.push(defaultLeader.usuario_id || defaultLeader.id);
+        matchedLeaderNomes.push(defaultLeader.nome);
+      }
 
       const created = dbStore.createGoal({
         indicador: row.indicador,
@@ -241,12 +300,16 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
         periodo: row.periodo,
         data_inicio: row.data_inicio || undefined,
         data_fim: row.data_fim || undefined,
-        unidade_id: matchedUnit?.id || 'unit-sp-01',
-        unidade_nome: matchedUnit?.nome || 'Matriz Geral',
-        projeto_id: matchedUnit?.id || 'unit-sp-01',
-        projeto_nome: matchedUnit?.nome || 'Matriz Geral',
-        lider_id: matchedLeader?.usuario_id || 'user-lider-sp',
-        lider_nome: matchedLeader?.nome || 'Mariana Costa',
+        unidade_id: matchedProjIds[0],
+        unidade_nome: matchedProjNomes[0],
+        projeto_id: matchedProjIds[0],
+        projeto_nome: matchedProjNomes[0],
+        projetos_ids: matchedProjIds,
+        projetos_nomes: matchedProjNomes,
+        lider_id: matchedLeaderIds[0],
+        lider_nome: matchedLeaderNomes[0],
+        lideres_ids: matchedLeaderIds,
+        lideres_nomes: matchedLeaderNomes,
         direcao_melhor: row.direcao_melhor || 'MAIOR_MELHOR',
         descricao: row.descricao || undefined,
         status: 'EM_ANDAMENTO',
