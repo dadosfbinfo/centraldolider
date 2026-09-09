@@ -67,27 +67,40 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
         'Indicador *': 'Cumprimento de SLA de Ordens de Serviço',
         'Meta Valor *': 95,
         'Unidade de Medida (%, R$, un, horas, pts)': '%',
+        'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MAIOR_MELHOR',
         'Tipo de Período (MENSAL, SEMANAL, DIARIA)': 'MENSAL',
         'Período (Ex: Setembro/2026) *': 'Setembro/2026',
         'Data Início (YYYY-MM-DD)': '2026-09-01',
         'Data Fim (YYYY-MM-DD)': '2026-09-30',
         'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros, Unidade Rio de Janeiro - Barra da Tijuca',
         'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br, roberto.almeida@centraldolider.com.br',
-        'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MAIOR_MELHOR',
-        'Descrição': 'Meta de entrega das ordens de serviço dentro do prazo estipulado.',
+        'Descrição': 'Meta corporativa de cumprimento de prazos operacionais nas unidades ativas.',
       },
       {
         'Indicador *': 'Índice de Perdas Operacionais / Avarias',
         'Meta Valor *': 1.5,
         'Unidade de Medida (%, R$, un, horas, pts)': '%',
+        'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MENOR_MELHOR',
         'Tipo de Período (MENSAL, SEMANAL, DIARIA)': 'MENSAL',
         'Período (Ex: Setembro/2026) *': 'Setembro/2026',
         'Data Início (YYYY-MM-DD)': '2026-09-01',
         'Data Fim (YYYY-MM-DD)': '2026-09-30',
         'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade Rio de Janeiro - Barra da Tijuca',
         'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'roberto.almeida@centraldolider.com.br',
-        'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MENOR_MELHOR',
-        'Descrição': 'Redução de perdas de estoque e manuseio no turno.',
+        'Descrição': 'Redução de perdas de estoque e manuseio no turno (quanto menor o índice, melhor).',
+      },
+      {
+        'Indicador *': 'Inspeções e Vistorias Realizadas',
+        'Meta Valor *': 10,
+        'Unidade de Medida (%, R$, un, horas, pts)': 'un',
+        'Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)': 'MAIOR_MELHOR',
+        'Tipo de Período (MENSAL, SEMANAL, DIARIA)': 'DIARIA',
+        'Período (Ex: Setembro/2026) *': '08/09/2026',
+        'Data Início (YYYY-MM-DD)': '2026-09-08',
+        'Data Fim (YYYY-MM-DD)': '2026-09-08',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br',
+        'Descrição': 'Execução do ciclo obrigatório diário de vistorias de segurança e conformidade.',
       },
     ];
 
@@ -129,19 +142,27 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
             row['Indicador'] ||
             row['Nome'] ||
             row['Meta'] ||
+            row['Nome do Indicador'] ||
             '';
 
-          const meta_valor = parseFloat(row['Meta Valor *'] || row['Meta Valor'] || row['Valor'] || '0');
+          const rawVal = row['Meta Valor *'] || row['Meta Valor'] || row['Valor Meta'] || row['Valor'] || '0';
+          const normalizedVal = typeof rawVal === 'string' ? rawVal.replace(',', '.').trim() : rawVal;
+          const meta_valor = parseFloat(normalizedVal);
+
           const unidade_medida =
             row['Unidade de Medida (%, R$, un, horas, pts)'] ||
             row['Unidade de Medida (%, R$, un, horas)'] ||
             row['Unidade de Medida'] ||
+            row['Unidade'] ||
+            row['Medida'] ||
             '%';
 
           let tipoPeriodoRaw = (
             row['Tipo de Período (MENSAL, SEMANAL, DIARIA)'] ||
             row['Tipo de Período'] ||
+            row['Tipo de Periodo'] ||
             row['Periodicidade'] ||
+            row['Tipo Periodo'] ||
             'MENSAL'
           )
             .toString()
@@ -153,28 +174,75 @@ export const GoalImportModal: React.FC<GoalImportModalProps> = ({
             tipo_periodo = tipoPeriodoRaw as GoalPeriodicity;
           }
 
-          const periodo = row['Período (Ex: Setembro/2026) *'] || row['Período'] || row['Periodo'] || 'Setembro/2026';
-          const data_inicio = row['Data Início (YYYY-MM-DD)'] || row['Data Início'] || '';
-          const data_fim = row['Data Fim (YYYY-MM-DD)'] || row['Data Fim'] || '';
+          const periodo =
+            row['Período (Ex: Setembro/2026) *'] ||
+            row['Período'] ||
+            row['Periodo'] ||
+            row['Mês/Ano'] ||
+            'Setembro/2026';
+
+          const formatExcelDate = (val: any) => {
+            if (!val) return '';
+            if (typeof val === 'number') {
+              const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+              return jsDate.toISOString().split('T')[0];
+            }
+            return String(val).trim();
+          };
+
+          const data_inicio = formatExcelDate(
+            row['Data Início (YYYY-MM-DD)'] ||
+            row['Data Início'] ||
+            row['Data Inicio'] ||
+            row['Início'] ||
+            row['Inicio']
+          );
+
+          const data_fim = formatExcelDate(
+            row['Data Fim (YYYY-MM-DD)'] ||
+            row['Data Fim'] ||
+            row['Fim'] ||
+            row['Término']
+          );
+
           const projeto =
             row['Projeto(s) (Nomes ou Códigos separados por vírgula)'] ||
+            row['Projeto(s)'] ||
+            row['Projetos'] ||
             row['Projeto'] ||
+            row['Unidade(s)'] ||
+            row['Unidades'] ||
             row['Unidade'] ||
             '';
+
           const lider =
             row['Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)'] ||
+            row['Líder(es) Responsável(eis)'] ||
+            row['Líderes Responsáveis'] ||
             row['Líder Responsável (E-mail ou Nome)'] ||
+            row['Líder(es)'] ||
+            row['Líderes'] ||
             row['Líder'] ||
+            row['Lider'] ||
             row['Responsável'] ||
+            row['Responsáveis'] ||
             '';
 
-          const dirRaw = (row['Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)'] || row['Direção'] || 'MAIOR_MELHOR')
+          const dirRaw = (
+            row['Direção Melhor (MAIOR_MELHOR ou MENOR_MELHOR)'] ||
+            row['Direção Melhor'] ||
+            row['Direcao Melhor'] ||
+            row['Direção'] ||
+            row['Direcao'] ||
+            'MAIOR_MELHOR'
+          )
             .toString()
             .toUpperCase()
             .trim();
+
           const direcao_melhor: GoalDirection = dirRaw === 'MENOR_MELHOR' ? 'MENOR_MELHOR' : 'MAIOR_MELHOR';
 
-          const descricao = row['Descrição'] || row['Descricao'] || '';
+          const descricao = row['Descrição'] || row['Descricao'] || row['Observações'] || row['Observacoes'] || '';
 
           let isValid = true;
           let validationError = '';

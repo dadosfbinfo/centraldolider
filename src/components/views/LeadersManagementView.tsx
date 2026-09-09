@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 
 export const LeadersManagementView: React.FC = () => {
   const { setActiveTab } = useAuth();
@@ -29,6 +30,7 @@ export const LeadersManagementView: React.FC = () => {
   const [tasks, setTasks] = useState<TarefaOS[]>([]);
   const [users, setUsers] = useState<UsuarioPerfil[]>([]);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
 
@@ -72,21 +74,6 @@ export const LeadersManagementView: React.FC = () => {
 
   const gerenciaUsers = users.filter((u) => u.role === 'GERENCIA');
 
-  const handleOpenCreateModal = () => {
-    setEditingLeader(null);
-    setFormData({
-      usuario_id: '',
-      nome: '',
-      email: '',
-      cargo: 'Líder Operacional de Projeto',
-      projetos_ids: projects[0]?.id ? [projects[0].id] : [],
-      gestores_imediatos_ids: gerenciaUsers[0]?.id ? [gerenciaUsers[0].id] : [],
-      status: 'ATIVO',
-      telefone: '',
-    });
-    setLeaderModalOpen(true);
-  };
-
   const handleOpenEditModal = (leader: Lider) => {
     setEditingLeader(leader);
     
@@ -117,23 +104,6 @@ export const LeadersManagementView: React.FC = () => {
     setLeaderModalOpen(true);
   };
 
-  const handleUserSelectChange = (userId: string) => {
-    const selectedUser = users.find((u) => u.id === userId);
-    if (selectedUser) {
-      setFormData((prev) => ({
-        ...prev,
-        usuario_id: selectedUser.id,
-        nome: selectedUser.nome,
-        email: selectedUser.email,
-        telefone: selectedUser.telefone || prev.telefone,
-        projetos_ids: selectedUser.unidade_id ? [selectedUser.unidade_id] : prev.projetos_ids,
-        cargo: selectedUser.cargo || prev.cargo,
-      }));
-    } else {
-      setFormData((prev) => ({ ...prev, usuario_id: '' }));
-    }
-  };
-
   const handleToggleProject = (projId: string) => {
     setFormData((prev) => {
       const exists = prev.projetos_ids.includes(projId);
@@ -158,6 +128,12 @@ export const LeadersManagementView: React.FC = () => {
     e.preventDefault();
     if (!formData.nome.trim() || !formData.email.trim()) {
       alert('Por favor, informe o nome e o e-mail do líder.');
+      return;
+    }
+
+    if (!editingLeader) {
+      alert('Para cadastrar novos líderes, utilize a aba de Usuários.');
+      setLeaderModalOpen(false);
       return;
     }
 
@@ -188,16 +164,17 @@ export const LeadersManagementView: React.FC = () => {
       telefone: formData.telefone.trim(),
     };
 
-    if (editingLeader) {
-      dbStore.updateLeader(editingLeader.id, leaderPayload);
-      setActionMessage(`Líder ${formData.nome} atualizado com sucesso.`);
-    } else {
-      dbStore.createLeader({
-        usuario_id: formData.usuario_id || 'usr-' + Date.now().toString(36),
-        ...leaderPayload,
+    dbStore.updateLeader(editingLeader.id, leaderPayload);
+    if (editingLeader.usuario_id) {
+      dbStore.updateUserProfile(editingLeader.usuario_id, {
+        nome: formData.nome.trim(),
+        telefone: formData.telefone.trim(),
+        cargo: formData.cargo.trim(),
+        unidade_id: primaryProjectId,
+        unidade_nome: primaryProjectName,
       });
-      setActionMessage(`Líder ${formData.nome} cadastrado com sucesso.`);
     }
+    setActionMessage(`Líder ${formData.nome} atualizado com sucesso.`);
 
     setLeaderModalOpen(false);
     setTimeout(() => setActionMessage(null), 4000);
@@ -224,6 +201,13 @@ export const LeadersManagementView: React.FC = () => {
     const matchesStatus = !selectedStatus || l.status === selectedStatus;
     return matchesSearch && matchesProject && matchesStatus;
   });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedProject, selectedStatus]);
+
+  const paginatedLeaders = filteredLeaders.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -252,11 +236,12 @@ export const LeadersManagementView: React.FC = () => {
           </button>
 
           <button
-            onClick={handleOpenCreateModal}
-            className="px-4 py-2.5 bg-[#C76B4A] hover:bg-[#b05838] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
+            onClick={() => setActiveTab('admin-usuarios')}
+            className="px-3.5 py-2.5 bg-[#C76B4A]/10 hover:bg-[#C76B4A]/20 text-[#C76B4A] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-[#C76B4A]/20"
+            title="O cadastro de novos líderes é realizado centralizadamente no módulo de Usuários"
           >
             <UserPlus className="w-4 h-4" />
-            Novo Líder
+            Novo Líder em Usuários
           </button>
         </div>
       </div>
@@ -323,7 +308,7 @@ export const LeadersManagementView: React.FC = () => {
             Nenhum líder encontrado para os filtros selecionados.
           </div>
         ) : (
-          filteredLeaders.map((leader) => {
+          paginatedLeaders.map((leader) => {
             const leaderTasks = tasks
               .filter((t) => t.responsavel_id === leader.usuario_id || (leader.email && t.responsavel_email?.toLowerCase() === leader.email.toLowerCase()))
               .filter((t) => isDateInPeriod(t.data, period));
@@ -461,6 +446,15 @@ export const LeadersManagementView: React.FC = () => {
         )}
       </div>
 
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-xs">
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredLeaders.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
+      </div>
+
       {/* Leader Create / Edit Modal */}
       {leaderModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -472,10 +466,10 @@ export const LeadersManagementView: React.FC = () => {
                 </span>
                 <div>
                   <h3 className="font-bold text-base text-[#343A40]">
-                    {editingLeader ? 'Editar Perfil de Líder' : 'Novo Líder Operacional'}
+                    Editar Perfil de Líder
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Defina nome, cargo, gestor e vínculo de projeto
+                    Defina projetos vinculados, gestor imediato (Gerência) e dados operacionais
                   </p>
                 </div>
               </div>
@@ -488,26 +482,6 @@ export const LeadersManagementView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveLeader} className="space-y-4">
-              {/* Optional Link to Existing User */}
-              {!editingLeader && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Vincular a Usuário do Sistema (Opcional)
-                  </label>
-                  <select
-                    value={formData.usuario_id}
-                    onChange={(e) => handleUserSelectChange(e.target.value)}
-                    className="w-full px-3 py-2.5 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
-                  >
-                    <option value="">-- Criar novo perfil independente --</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome} ({u.email}) - {u.role}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

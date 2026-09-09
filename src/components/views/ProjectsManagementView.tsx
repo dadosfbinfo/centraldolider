@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Projeto } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
 import { FolderKanban, Plus, Edit2, Trash2, Check, Search, Power, Calendar } from 'lucide-react';
+import { Pagination } from '../common/Pagination';
 
 export const ProjectsManagementView: React.FC = () => {
   const [projects, setProjects] = useState<Projeto[]>(() => dbStore.getUnits());
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<'TODOS' | 'ATIVA' | 'INATIVA'>('TODOS');
   const [editingProject, setEditingProject] = useState<Projeto | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -92,6 +94,12 @@ export const ProjectsManagementView: React.FC = () => {
     const matchesStatus = statusFilter === 'TODOS' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
+
+  const paginatedProjects = filteredProjects.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <div className="space-y-6">
@@ -264,7 +272,7 @@ export const ProjectsManagementView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredProjects.map((p) => (
+                paginatedProjects.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50/80 transition">
                     <td className="py-4 px-6">
                       <div className="font-bold text-[#343A40] text-sm">{p.nome}</div>
@@ -333,6 +341,14 @@ export const ProjectsManagementView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredProjects.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
 
         {/* Table Footer */}
         <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-xs text-gray-500">

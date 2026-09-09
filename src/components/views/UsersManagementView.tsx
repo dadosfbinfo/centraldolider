@@ -23,12 +23,14 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { dbStore } from '../../services/dbStore';
 import { UsuarioPerfil, UserRole, ConfirmationStatus, Projeto } from '../../types/database';
+import { Pagination } from '../common/Pagination';
 
 export const UsersManagementView: React.FC = () => {
   const { user: currentUser, updateUserRole } = useAuth();
   const [users, setUsers] = useState<UsuarioPerfil[]>([]);
   const [projects, setProjects] = useState<Projeto[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConfirmationStatus>('ALL');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -156,6 +158,13 @@ export const UsersManagementView: React.FC = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, roleFilter, statusFilter]);
+
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * 10, currentPage * 10);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
       {/* Header Banner */}
@@ -253,7 +262,7 @@ export const UsersManagementView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((u) => {
+                paginatedUsers.map((u) => {
                   const isCurrent = u.id === currentUser?.id;
                   const isPending = u.status_confirmacao === 'PENDENTE';
 
@@ -410,6 +419,14 @@ export const UsersManagementView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredUsers.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Create User Modal */}

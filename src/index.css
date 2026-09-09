@@ -77,4 +77,125 @@ body {
   background: #adb5bd;
 }
 
+/* ==========================================================================
+   Print Styles for Reports and Documents
+   Ensures single copy, full continuous pages, confirmed readings, and comments
+   ========================================================================== */
+@media print {
+  @page {
+    size: portrait;
+    margin: 12mm 15mm;
+  }
+
+  html,
+  body {
+    background: #FFFFFF !important;
+    color: #1c1917 !important;
+    height: auto !important;
+    overflow: visible !important;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app navigation chrome and any elements marked print:hidden */
+  aside,
+  header:not(.print-include),
+  nav,
+  #sidebar,
+  #main-header,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Flatten modal overlays to natural document flow */
+  #report-viewer-modal-backdrop {
+    position: static !important;
+    inset: auto !important;
+    background: #FFFFFF !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+    z-index: auto !important;
+    backdrop-filter: none !important;
+  }
+
+  #report-viewer-modal-container {
+    position: static !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    background: #FFFFFF !important;
+    color: #1c1917 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #report-viewer-header,
+  #report-viewer-footer {
+    display: none !important;
+  }
+
+  #report-viewer-body {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #FFFFFF !important;
+    overflow: visible !important;
+    display: block !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  #pdf-sheet {
+    transform: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: auto !important;
+  }
+
+  .pdf-page-container {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 16px !important;
+    display: block !important;
+  }
+
+  #report-confirmations-section,
+  #report-confirmations-section-text {
+    box-shadow: none !important;
+    border: 1px solid #e7e5e4 !important;
+    border-radius: 8px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 20px !important;
+    padding: 16px !important;
+  }
+
+  #report-comments-section {
+    box-shadow: none !important;
+    border: 1px solid #e7e5e4 !important;
+    border-radius: 8px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 20px !important;
+    padding: 16px !important;
+  }
+
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
 

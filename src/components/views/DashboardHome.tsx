@@ -31,7 +31,7 @@ import { TaskFormModal } from './TaskFormModal';
 import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
 
 export const DashboardHome: React.FC = () => {
-  const { currentUser, setActiveTab } = useAuth();
+  const { currentUser, setActiveTab, navigateToTasks } = useAuth();
   const isAdmin = currentUser?.role === 'ADMINISTRADOR';
 
   const [tasks, setTasks] = useState<TarefaOS[]>([]);
@@ -109,6 +109,7 @@ export const DashboardHome: React.FC = () => {
 
   const todayPending = todayTasks.filter((t) => t.status !== 'CONCLUIDA');
   const todayCompleted = todayTasks.filter((t) => t.status === 'CONCLUIDA');
+  const inProgressTasks = periodTasks.filter((t) => t.status === 'EM_ANDAMENTO');
   const overdueTasks = periodTasks.filter((t) => t.status === 'ATRASADA');
   const blockedTasks = periodTasks.filter((t) => t.status === 'BLOQUEADA');
 
@@ -196,11 +197,12 @@ export const DashboardHome: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           {/* 1: Tarefas de Hoje */}
           <div
-            onClick={() => setActiveTab(isAdmin ? 'admin-tarefas' : 'minhas-tarefas')}
-            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#C76B4A] transition cursor-pointer shadow-2xs"
+            id="home-card-today-tasks"
+            onClick={() => navigateToTasks('hoje')}
+            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#C76B4A] transition cursor-pointer shadow-2xs group"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-[#C76B4A] transition-colors">
                 Tarefas Hoje
               </span>
               <div className="p-2 rounded-xl bg-[#FAF0E6] text-[#C76B4A]">
@@ -216,13 +218,37 @@ export const DashboardHome: React.FC = () => {
             </div>
           </div>
 
-          {/* 2: Concluídas */}
+          {/* 2: Em andamento */}
           <div
-            onClick={() => setActiveTab(isAdmin ? 'admin-tarefas' : 'minhas-tarefas')}
-            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-emerald-500 transition cursor-pointer shadow-2xs"
+            id="home-card-in-progress"
+            onClick={() => navigateToTasks('em_andamento')}
+            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-blue-500 transition cursor-pointer shadow-2xs group"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                Em andamento
+              </span>
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                <Play className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-2">
+              <span className="text-2xl font-black text-blue-600">{inProgressTasks.length}</span>
+              <span className="text-[11px] text-gray-500 ml-1.5 font-medium">OS</span>
+            </div>
+            <div className="mt-1 text-[11px] text-blue-600 font-semibold">
+              {inProgressTasks.length > 0 ? 'Em execução agora' : 'Nenhuma em execução'}
+            </div>
+          </div>
+
+          {/* 3: Concluídas */}
+          <div
+            id="home-card-completed"
+            onClick={() => navigateToTasks('concluidas')}
+            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-emerald-500 transition cursor-pointer shadow-2xs group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-emerald-600 transition-colors">
                 Concluídas
               </span>
               <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
@@ -234,21 +260,22 @@ export const DashboardHome: React.FC = () => {
               <span className="text-[11px] text-gray-500 ml-1.5 font-medium">hoje</span>
             </div>
             <div className="mt-1 text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
-              <span>{totalCompleted} no histórico</span>
+              <span>{totalCompleted} no período</span>
             </div>
           </div>
 
-          {/* 3: Atrasadas */}
+          {/* 4: Atrasadas */}
           <div
-            onClick={() => setActiveTab(isAdmin ? 'admin-tarefas' : 'minhas-tarefas')}
-            className={`stat-card bg-white rounded-2xl p-4 border transition cursor-pointer shadow-2xs ${
+            id="home-card-overdue"
+            onClick={() => navigateToTasks('atrasadas')}
+            className={`stat-card bg-white rounded-2xl p-4 border transition cursor-pointer shadow-2xs group ${
               overdueTasks.length > 0
-                ? 'border-red-300 ring-1 ring-red-200'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-red-300 ring-1 ring-red-200 hover:border-red-500'
+                : 'border-gray-200 hover:border-gray-400'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-red-600 transition-colors">
                 Atrasadas
               </span>
               <div className={`p-2 rounded-xl ${overdueTasks.length > 0 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
@@ -266,30 +293,11 @@ export const DashboardHome: React.FC = () => {
             </div>
           </div>
 
-          {/* 4: Bloqueadas */}
-          <div
-            onClick={() => setActiveTab(isAdmin ? 'admin-tarefas' : 'minhas-tarefas')}
-            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-amber-400 transition cursor-pointer shadow-2xs"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Bloqueadas
-              </span>
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
-                <ShieldAlert className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-2">
-              <span className="text-2xl font-black text-amber-800">{blockedTasks.length}</span>
-              <span className="text-[11px] text-gray-500 ml-1.5 font-medium">com entrave</span>
-            </div>
-            <div className="mt-1 text-[11px] text-amber-700 font-semibold">
-              {blockedTasks.length > 0 ? 'Aguardando ação' : 'Nenhum bloqueio'}
-            </div>
-          </div>
-
           {/* 5: SLA no Prazo */}
-          <div className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#355C7D] transition shadow-2xs">
+          <div
+            id="home-card-sla"
+            className="stat-card bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#355C7D] transition shadow-2xs"
+          >
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                 SLA / No Prazo

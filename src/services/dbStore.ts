@@ -1887,12 +1887,12 @@ class DatabaseStore {
     const data = localStorage.getItem(STORAGE_KEYS.TASKS);
     const tasks: TarefaOS[] = data ? JSON.parse(data) : [];
     
-    // Auto-evaluate overdue status on query
+    // Auto-evaluate overdue status on query (only for pending PROGRAMADA tasks)
     const now = new Date();
     let hasChanges = false;
     
     const updatedTasks = tasks.map((t) => {
-      if ((t.status === 'PROGRAMADA' || t.status === 'EM_ANDAMENTO') && t.prazo) {
+      if (t.status === 'PROGRAMADA' && t.prazo) {
         const deadline = new Date(t.prazo);
         if (now > deadline) {
           hasChanges = true;
@@ -2051,10 +2051,12 @@ class DatabaseStore {
     return `OS #${String(next).padStart(6, '0')}`;
   }
 
-  public createTask(data: Omit<TarefaOS, 'id' | 'numero_os' | 'created_at' | 'updated_at'>): TarefaOS {
+  public createTask(data: Omit<TarefaOS, 'id' | 'numero_os' | 'created_at' | 'updated_at'> & { numero_os?: string }): TarefaOS {
     const tasks = this.getTasks();
     const now = new Date().toISOString();
-    const numero_os = this.generateNextOsNumber();
+    const numero_os = data.numero_os && data.numero_os.trim().length > 0 
+      ? data.numero_os.trim() 
+      : this.generateNextOsNumber();
 
     const newTask: TarefaOS = {
       ...data,
@@ -2075,7 +2077,7 @@ class DatabaseStore {
         titulo: `Nova OS Atribuída: ${newTask.numero_os}`,
         texto: `${newTask.titulo} - Prazo: ${newTask.prazo?.replace('T', ' ')}`,
         lida: false,
-        link_acao: '/tarefas',
+        link_acao: 'minhas-tarefas',
       });
     }
 
@@ -2083,7 +2085,10 @@ class DatabaseStore {
     return newTask;
   }
 
-  public updateTask(id: string, data: Partial<TarefaOS>): TarefaOS {
+  public updateTask(id: string, data: Partial<TarefaOS>, userRole?: UserRole): TarefaOS {
+    if (data.status === 'CANCELADA' && userRole === 'LIDER') {
+      throw new Error('O perfil de Líder não possui permissão para cancelar Ordens de Serviço.');
+    }
     const tasks = this.getTasks();
     const idx = tasks.findIndex((t) => t.id === id);
     if (idx === -1) throw new Error('Ordem de Serviço não encontrada.');
@@ -2091,9 +2096,13 @@ class DatabaseStore {
     const current = tasks[idx];
     const previousAssignee = current.responsavel_id;
 
+    // OM-03: The deadline (prazo) is immediately immutable from the moment of creation for any role
+    const safeData = { ...data };
+    delete safeData.prazo;
+
     tasks[idx] = {
       ...current,
-      ...data,
+      ...safeData,
       updated_at: new Date().toISOString(),
     };
 
@@ -2107,7 +2116,7 @@ class DatabaseStore {
         titulo: `OS Reatribuída: ${tasks[idx].numero_os}`,
         texto: `Você foi designado como responsável por: ${tasks[idx].titulo}`,
         lida: false,
-        link_acao: '/tarefas',
+        link_acao: 'minhas-tarefas',
       });
     }
 
@@ -2153,8 +2162,35 @@ class DatabaseStore {
   }
 
   public deleteTask(id: string): void {
-    const tasks = this.getTasks().filter((t) => t.id !== id);
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+
+    if (
+      task.status === 'CONCLUIDA' ||
+      task.status === 'AGUARDANDO_VALIDACAO' ||
+      task.status === 'EM_ANDAMENTO'
+    ) {
+      throw new Error(
+        `Não é possível excluir esta Ordem de Serviço pois seu status atual é "${
+          task.status === 'CONCLUIDA'
+            ? 'Concluída'
+            : task.status === 'AGUARDANDO_VALIDACAO'
+            ? 'Em validação'
+            : 'Em andamento'
+        }". A exclusão é permitida apenas para tarefas que não estejam em andamento, em validação ou concluídas.`
+      );
+    }
+
+    const comments = this.getComments('TAREFA', id);
+    if (comments.length > 0) {
+      throw new Error(
+        'Não é possível excluir esta Ordem de Serviço pois ela possui comentários e registros de comunicação arquivados.'
+      );
+    }
+
+    const filtered = tasks.filter((t) => t.id !== id);
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(filtered));
     this.emitChange();
   }
 
@@ -2166,11 +2202,21 @@ class DatabaseStore {
     });
   }
 
-  public cancelTask(id: string, motivo?: string): TarefaOS {
+  public cancelTask(id: string, motivo?: string, userRole?: UserRole): TarefaOS {
+    if (userRole === 'LIDER') {
+      throw new Error('O perfil de Líder não possui permissão para cancelar Ordens de Serviço.');
+    }
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === id);
+    if (!task) throw new Error('OS não encontrada.');
+    if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA') {
+      throw new Error('Não é possível cancelar uma Ordem de Serviço que já possui o status "Concluída" ou "Cancelada".');
+    }
     return this.updateTask(id, {
       status: 'CANCELADA',
-      observacoes_conclusao: motivo ? `Cancelada pelo Administrador: ${motivo}` : 'Cancelada pelo Administrador',
-    });
+      motivo_bloqueio: motivo || task.motivo_bloqueio,
+      observacoes_conclusao: motivo ? `Cancelada: ${motivo}` : (task.observacoes_conclusao || 'OS Cancelada'),
+    }, userRole);
   }
 
   public startTask(id: string): TarefaOS {
@@ -2272,6 +2318,21 @@ class DatabaseStore {
           link_acao: 'admin-tarefas',
         });
       });
+
+      // OM-02: Also notify the Leader that the task was sent for validation
+      const leaderUserId = task.responsavel_id || executorInfo?.id;
+      if (leaderUserId) {
+        this.addNotification({
+          usuario_id: leaderUserId,
+          tipo: 'OS_AGUARDANDO_VALIDACAO',
+          titulo: `⏳ OS Enviada para Validação: ${updatedTask.numero_os}`,
+          texto: `Sua OS "${updatedTask.titulo}" foi submetida com sucesso e aguarda validação do gestor responsável.`,
+          lida: false,
+          item_tipo: 'TAREFA',
+          item_id: updatedTask.id,
+          link_acao: 'minhas-tarefas',
+        });
+      }
     } else {
       // Notify admins
       const admins = this.getUsers().filter((u) => u.role === 'ADMINISTRADOR');
@@ -2450,10 +2511,12 @@ class DatabaseStore {
     }
 
     const now = new Date().toISOString();
+    const isOverdue = Boolean(task.prazo && now > task.prazo);
+    const returnStatus: TaskStatus = isOverdue ? 'ATRASADA' : 'EM_ANDAMENTO';
 
     const updatedTask: TarefaOS = {
       ...task,
-      status: 'EM_ANDAMENTO',
+      status: returnStatus,
       validacoes_aprovadas: [], // Reset previous approvals since the OS was returned for changes
       motivo_recusa: motivo,
       recusado_por_id: validator.id,
@@ -2844,24 +2907,44 @@ class DatabaseStore {
     return updated;
   }
 
-  public toggleReportPublished(id: string): Relatorio {
+  public publishReport(id: string): Relatorio {
     const reports = this.getReports();
     const idx = reports.findIndex((r) => r.id === id);
     if (idx === -1) throw new Error('Relatório não encontrado.');
 
-    const newStatus = !reports[idx].publicado;
-    return this.updateReport(id, { publicado: newStatus });
+    reports[idx].publicado = true;
+    reports[idx].updated_at = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+    this.emitChange();
+    return reports[idx];
+  }
+
+  public toggleReportPublished(id: string): Relatorio {
+    // Cannot unpublish a published document
+    return this.publishReport(id);
   }
 
   public deleteReport(id: string): void {
-    const reports = this.getReports().filter((r) => r.id !== id);
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+    const reports = this.getReports();
+    const target = reports.find((r) => r.id === id);
+    if (!target) return;
+
+    const comments = this.getComments('RELATORIO', id);
+    const confirmations = target.confirmacoes_leitura || [];
+    if (comments.length > 0 || confirmations.length > 0) {
+      throw new Error(
+        'Este relatório não pode ser excluído porque já possui comentários ou confirmações de leitura registradas.'
+      );
+    }
+
+    const filtered = reports.filter((r) => r.id !== id);
+    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(filtered));
     this.emitChange();
   }
 
   public confirmReportReading(
     reportId: string,
-    user: { id: string; nome: string; cargo?: string; unidade_nome?: string }
+    user: { id: string; nome: string; cargo?: string; unidade_nome?: string; role?: string }
   ): Relatorio {
     const reports = this.getReports();
     const idx = reports.findIndex((r) => r.id === reportId);
@@ -2873,12 +2956,22 @@ class DatabaseStore {
 
     if (!alreadyConfirmed) {
       const now = new Date().toISOString();
+      const userProfile = this.getUserById(user.id);
+      const role = user.role || userProfile?.role || 'LIDER';
+      const roleCargo = role === 'ADMINISTRADOR'
+        ? 'Administrador'
+        : role === 'GERENCIA'
+        ? 'Gerência'
+        : (user.cargo || 'Líder Operacional');
+
       const newConfirmation = {
         usuario_id: user.id,
         usuario_nome: user.nome,
-        usuario_cargo: user.cargo,
+        usuario_cargo: user.cargo || roleCargo,
+        usuario_role: role,
         unidade_nome: user.unidade_nome,
         data_hora: now,
+        data_confirmacao: now,
       };
 
       report.confirmacoes_leitura = [...confirmations, newConfirmation];
@@ -2889,15 +2982,16 @@ class DatabaseStore {
       reports[idx] = report;
       localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
 
-      // Notify admin
-      const admins = this.getUsers().filter((u) => u.role === 'ADMINISTRADOR');
+      // Notify other admins if user is not the admin themself
+      const admins = this.getUsers().filter((u) => u.role === 'ADMINISTRADOR' && u.id !== user.id);
       admins.forEach((admin) => {
         this.addNotification({
           usuario_id: admin.id,
           tipo: 'SISTEMA',
           titulo: `📖 Confirmação de Leitura: ${report.titulo}`,
-          texto: `${user.nome} confirmou a leitura do relatório (${report.periodo}).`,
+          texto: `${user.nome} (${roleCargo}) confirmou a leitura do relatório (${report.periodo}).`,
           lida: false,
+          link_acao: 'admin-relatorios',
         });
       });
 
@@ -3216,18 +3310,43 @@ class DatabaseStore {
     this.emitChange();
   }
 
+  // Helper to map a user ID or leader ID to all linked identifiers
+  public getAssociatedUserIds(userIdOrLeaderId: string): Set<string> {
+    const ids = new Set<string>();
+    if (!userIdOrLeaderId) return ids;
+    ids.add(userIdOrLeaderId);
+
+    const leaders = this.getLeaders();
+    const byLiderId = leaders.find((l) => l.id === userIdOrLeaderId);
+    if (byLiderId?.usuario_id) ids.add(byLiderId.usuario_id);
+
+    const byUserId = leaders.find((l) => l.usuario_id === userIdOrLeaderId);
+    if (byUserId?.id) ids.add(byUserId.id);
+
+    return ids;
+  }
+
   // --- NOTIFICATIONS ---
-  public getNotifications(userId?: string): Notificacao[] {
+  public getAllNotificationsRaw(): Notificacao[] {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    const notifs: Notificacao[] = data ? JSON.parse(data) : [];
-    if (userId) {
-      return notifs.filter((n) => !n.usuario_id || n.usuario_id === userId || n.usuario_id === 'ALL');
+    return data ? JSON.parse(data) : [];
+  }
+
+  public getNotifications(userId?: string): Notificacao[] {
+    if (!userId) {
+      return []; // Security: Prevent data exposure / notification leakage when userId is missing
     }
-    return notifs;
+    const notifs = this.getAllNotificationsRaw();
+    const matchingIds = this.getAssociatedUserIds(userId);
+    return notifs.filter((n) => {
+      if (!n.usuario_id) return false;
+      if (n.usuario_id === 'ALL') return true;
+      return matchingIds.has(n.usuario_id);
+    });
   }
 
   public addNotification(notif: Omit<Notificacao, 'id' | 'created_at'>): void {
-    const notifs = this.getNotifications();
+    const notifs = this.getAllNotificationsRaw();
     const newNotif: Notificacao = {
       ...notif,
       id: 'notif-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 4),
@@ -3239,7 +3358,7 @@ class DatabaseStore {
   }
 
   public markNotificationRead(notifId: string): void {
-    const notifs = this.getNotifications();
+    const notifs = this.getAllNotificationsRaw();
     const idx = notifs.findIndex((n) => n.id === notifId);
     if (idx !== -1) {
       notifs[idx].lida = true;
@@ -3249,12 +3368,19 @@ class DatabaseStore {
   }
 
   public markAllNotificationsRead(userId?: string): void {
-    const notifs = this.getNotifications();
-    notifs.forEach((n) => {
-      if (!userId || n.usuario_id === userId || n.usuario_id === 'ALL') {
+    const notifs = this.getAllNotificationsRaw();
+    if (!userId) {
+      notifs.forEach((n) => {
         n.lida = true;
-      }
-    });
+      });
+    } else {
+      const matchingIds = this.getAssociatedUserIds(userId);
+      notifs.forEach((n) => {
+        if (n.usuario_id === 'ALL' || matchingIds.has(n.usuario_id)) {
+          n.lida = true;
+        }
+      });
+    }
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs));
     this.emitChange();
   }

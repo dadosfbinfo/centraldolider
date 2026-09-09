@@ -38,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   const loadNotifications = () => {
     if (currentUser) {
       dbStore.checkAndGenerateAutomatedAlerts(currentUser);
-      const list = dbStore.getNotifications(currentUser.role === 'ADMINISTRADOR' ? undefined : currentUser.id);
+      const list = dbStore.getNotifications(currentUser.id);
       setNotifications(list);
     }
   };
@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleMarkAllRead = () => {
     if (currentUser) {
-      dbStore.markAllNotificationsRead(currentUser.role === 'ADMINISTRADOR' ? undefined : currentUser.id);
+      dbStore.markAllNotificationsRead(currentUser.id);
       loadNotifications();
     }
   };
@@ -81,15 +81,17 @@ export const Header: React.FC<HeaderProps> = ({
     dbStore.markNotificationRead(notif.id);
     setShowNotifications(false);
 
+    const isManagerOrAdmin = currentUser?.role === 'ADMINISTRADOR' || currentUser?.role === 'GERENCIA';
+
     if (notif.link_acao) {
       const tabName = notif.link_acao.replace(/^\//, '');
-      if (currentUser?.role === 'ADMINISTRADOR') {
-        if (tabName === 'minhas-tarefas' || tabName === 'tarefas') setActiveTab('admin-tarefas');
-        else if (tabName === 'minhas-metas' || tabName === 'metas') setActiveTab('admin-metas');
-        else if (tabName === 'relatorios') setActiveTab('admin-relatorios');
-        else if (tabName === 'calendario') setActiveTab('admin-calendario');
-        else if (tabName === 'usuarios') setActiveTab('admin-usuarios');
-        else if (tabName === 'lideres') setActiveTab('admin-lideres');
+      if (isManagerOrAdmin) {
+        if (tabName === 'minhas-tarefas' || tabName === 'tarefas' || tabName === 'admin-tarefas') setActiveTab('admin-tarefas');
+        else if (tabName === 'minhas-metas' || tabName === 'metas' || tabName === 'admin-metas') setActiveTab('admin-metas');
+        else if (tabName === 'relatorios' || tabName === 'admin-relatorios') setActiveTab('admin-relatorios');
+        else if (tabName === 'calendario' || tabName === 'admin-calendario') setActiveTab('admin-calendario');
+        else if (tabName === 'usuarios' || tabName === 'admin-usuarios') setActiveTab('admin-usuarios');
+        else if (tabName === 'lideres' || tabName === 'admin-lideres') setActiveTab('admin-lideres');
         else setActiveTab(tabName as any);
       } else {
         if (tabName === 'admin-tarefas' || tabName === 'tarefas') setActiveTab('minhas-tarefas');
@@ -102,13 +104,17 @@ export const Header: React.FC<HeaderProps> = ({
     }
 
     if (notif.item_tipo === 'TAREFA') {
-      setActiveTab(currentUser?.role === 'ADMINISTRADOR' ? 'admin-tarefas' : 'minhas-tarefas');
+      setActiveTab(isManagerOrAdmin ? 'admin-tarefas' : 'minhas-tarefas');
     } else if (notif.item_tipo === 'META') {
-      setActiveTab(currentUser?.role === 'ADMINISTRADOR' ? 'admin-metas' : 'minhas-metas');
+      setActiveTab(isManagerOrAdmin ? 'admin-metas' : 'minhas-metas');
     } else if (notif.item_tipo === 'RELATORIO') {
-      setActiveTab(currentUser?.role === 'ADMINISTRADOR' ? 'admin-relatorios' : 'relatorios');
+      setActiveTab(isManagerOrAdmin ? 'admin-relatorios' : 'relatorios');
     } else if (notif.item_tipo === 'CALENDARIO') {
-      setActiveTab(currentUser?.role === 'ADMINISTRADOR' ? 'admin-calendario' : 'calendario');
+      setActiveTab(isManagerOrAdmin ? 'admin-calendario' : 'calendario');
+    } else if (notif.item_tipo === 'USUARIO') {
+      setActiveTab('admin-usuarios');
+    } else if (notif.item_tipo === 'LIDER') {
+      setActiveTab('admin-lideres');
     }
   };
 

@@ -5,13 +5,14 @@ import { useAuth } from '../../context/AuthContext';
 import {
   MessageSquare,
   Send,
-  Trash2,
   Shield,
   User,
   Clock,
   CheckCheck,
   CornerDownRight,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface CommentsThreadProps {
@@ -35,6 +36,8 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
   const [comments, setComments] = useState<Comentario[]>([]);
   const [newText, setNewText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadComments = () => {
@@ -48,6 +51,14 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
     const unsubscribe = dbStore.subscribe(loadComments);
     return () => unsubscribe();
   }, [itemTipo, itemId]);
+
+  // Adjust page to last page when new comments added or keep valid
+  const totalPages = Math.max(1, Math.ceil(comments.length / pageSize));
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,6 +81,9 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
       });
 
       setNewText('');
+      // Navigate to last page to see new comment
+      const newTotalPages = Math.max(1, Math.ceil((comments.length + 1) / pageSize));
+      setPage(newTotalPages);
       setTimeout(scrollToBottom, 100);
     } catch (err) {
       console.error('Erro ao registrar comentário:', err);
@@ -82,12 +96,6 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
-    }
-  };
-
-  const handleDelete = (commentId: string) => {
-    if (window.confirm('Deseja realmente remover este comentário?')) {
-      dbStore.deleteComment(commentId);
     }
   };
 
@@ -120,6 +128,9 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
     CALENDARIO: 'Item da Agenda',
   };
 
+  // Paginate comments
+  const paginatedComments = comments.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className={`flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden ${className}`}>
       {/* Header */}
@@ -150,7 +161,7 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
       )}
 
       {/* Comments List */}
-      <div className={`p-4 overflow-y-auto space-y-3 bg-[#FAF8F5]/40 ${compact ? 'max-h-60' : 'max-h-80'}`}>
+      <div className={`p-4 overflow-y-auto space-y-3 bg-[#FAF8F5]/40 print:max-h-none print:overflow-visible print:bg-transparent print:p-0 ${compact ? 'max-h-60' : 'max-h-80'}`}>
         {comments.length === 0 ? (
           <div className="text-center py-6 text-gray-400">
             <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-300 stroke-1" />
@@ -160,7 +171,7 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
             </p>
           </div>
         ) : (
-          comments.map((comment) => {
+          (typeof document !== 'undefined' && document.body.classList.contains('printing-report') ? comments : paginatedComments).map((comment) => {
             const isMe = currentUser?.id === comment.autor_id;
             const isAdmin = comment.autor_role === 'ADMINISTRADOR';
 
@@ -212,17 +223,6 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
                     <span className="text-gray-400 font-medium ml-1">
                       {formatCommentDate(comment.created_at)}
                     </span>
-
-                    {/* Delete action */}
-                    {(isMe || currentUser?.role === 'ADMINISTRADOR') && (
-                      <button
-                        onClick={() => handleDelete(comment.id)}
-                        title="Excluir comentário"
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 transition-opacity p-0.5 ml-1"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
                   </div>
 
                   {/* Speech Bubble */}
@@ -245,8 +245,37 @@ export const CommentsThread: React.FC<CommentsThreadProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Pagination for comments if > 10 */}
+      {comments.length > pageSize && (
+        <div className="px-3 py-1.5 bg-stone-50 border-t border-stone-200 flex items-center justify-between text-[11px] text-stone-500 print:hidden">
+          <span>
+            Página <strong>{page}</strong> de <strong>{totalPages}</strong> ({comments.length} comentários)
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="p-1 rounded bg-white border border-stone-200 disabled:opacity-40 hover:bg-stone-100 transition"
+              title="Comentários anteriores"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="p-1 rounded bg-white border border-stone-200 disabled:opacity-40 hover:bg-stone-100 transition"
+              title="Próximos comentários"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* New Comment Input Box */}
-      <form onSubmit={handleSend} className="p-3 bg-white border-t border-gray-200">
+      <form onSubmit={handleSend} className="p-3 bg-white border-t border-gray-200 print:hidden">
         <div className="relative flex items-end gap-2">
           <textarea
             value={newText}

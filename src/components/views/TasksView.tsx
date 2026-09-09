@@ -9,6 +9,7 @@ import { TaskPrintModal } from './TaskPrintModal';
 import { TaskImportModal } from './TaskImportModal';
 import { CategoriesManagementModal } from './CategoriesManagementModal';
 import { PeriodFilter, PeriodSelection } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 import {
   CheckSquare,
   Clock,
@@ -25,7 +26,6 @@ import {
   Play,
   Printer,
   Copy,
-  Edit2,
   Trash2,
   ShieldAlert,
   Unlock,
@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 
 interface TasksViewProps {
-  initialTab?: 'hoje' | 'proximas' | 'atrasadas' | 'concluidas' | 'todas';
+  initialTab?: 'hoje' | 'em_andamento' | 'atrasadas' | 'em_validacao' | 'concluidas' | 'canceladas' | 'todas';
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => {
@@ -49,10 +49,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   const isAdmin = currentUser?.role === 'ADMINISTRADOR';
   const canCreateOS = currentUser?.role === 'ADMINISTRADOR' || currentUser?.role === 'GERENCIA';
 
-  // Sub-tabs for Leader / Admin
-  const [activeSubTab, setActiveSubTab] = useState<'hoje' | 'proximas' | 'atrasadas' | 'concluidas' | 'todas'>(
-    isAdmin ? 'todas' : initialTab
+  // Sub-tabs for Leader / Admin (including Em Validação, Em Andamento and Canceladas)
+  const [activeSubTab, setActiveSubTab] = useState<'hoje' | 'em_andamento' | 'atrasadas' | 'em_validacao' | 'concluidas' | 'canceladas' | 'todas'>(
+    initialTab || (isAdmin ? 'todas' : 'hoje')
   );
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveSubTab(initialTab);
+    }
+  }, [initialTab]);
 
   const [tasks, setTasks] = useState<TarefaOS[]>([]);
   const [units, setUnits] = useState<Unidade[]>([]);
@@ -66,6 +72,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   const [filterPriority, setFilterPriority] = useState('');
   const [filterTipoOperacao, setFilterTipoOperacao] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [period, setPeriod] = useState<PeriodSelection>({
     mode: 'month',
     year: new Date().getFullYear(),
@@ -74,7 +81,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [taskToEdit, setTaskToEdit] = useState<TarefaOS | null>(null);
 
   const [isExecModalOpen, setIsExecModalOpen] = useState(false);
   const [taskToExecute, setTaskToExecute] = useState<TarefaOS | null>(null);
@@ -87,6 +93,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
+
+  // Cancellation Modal
+  const [taskToCancel, setTaskToCancel] = useState<TarefaOS | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   // Quick Action Menu Popover per task
   const [openMenuTaskId, setOpenMenuTaskId] = useState<string | null>(null);
@@ -114,21 +124,27 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
   const getSubTabTasks = () => {
     return tasks.filter((t) => {
       // Subtab check
-      if (activeSubTab === 'hoje' && (t.data !== todayStr || t.status === 'CONCLUIDA')) {
+      if (activeSubTab === 'hoje' && (t.data !== todayStr || t.status === 'CONCLUIDA' || t.status === 'CANCELADA' || t.status === 'AGUARDANDO_VALIDACAO')) {
         return false;
       }
-      if (activeSubTab === 'proximas' && (t.data <= todayStr || t.status === 'CONCLUIDA')) {
+      if (activeSubTab === 'em_andamento' && t.status !== 'EM_ANDAMENTO') {
         return false;
       }
-      if (activeSubTab === 'atrasadas' && t.status !== 'ATRASADA') {
+      if (activeSubTab === 'atrasadas' && (t.status !== 'ATRASADA' || t.status === 'CANCELADA' || t.status === 'AGUARDANDO_VALIDACAO')) {
+        return false;
+      }
+      if (activeSubTab === 'em_validacao' && t.status !== 'AGUARDANDO_VALIDACAO') {
         return false;
       }
       if (activeSubTab === 'concluidas' && t.status !== 'CONCLUIDA') {
         return false;
       }
+      if (activeSubTab === 'canceladas' && t.status !== 'CANCELADA') {
+        return false;
+      }
 
-      // Period filter check (only when not on 'hoje' or specific subtabs that override)
-      if (activeSubTab === 'todas' || activeSubTab === 'concluidas') {
+      // Period filter check
+      if (activeSubTab === 'todas' || activeSubTab === 'concluidas' || activeSubTab === 'canceladas' || activeSubTab === 'em_validacao') {
         if (period.mode === 'year' && t.data) {
           const taskYear = parseInt(t.data.substring(0, 4), 10);
           if (taskYear !== period.year) return false;
@@ -169,23 +185,25 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
     return matchesSearch && matchesUnit && matchesCategory && matchesPriority && matchesTipoOperacao && matchesStatus;
   });
 
+  // Reset page when filters or sub-tab change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeSubTab, search, filterUnit, filterCategory, filterPriority, filterTipoOperacao, filterStatus, period]);
+
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * 10, currentPage * 10);
+
   // KPI Counters
-  const countHoje = tasks.filter((t) => t.data === todayStr && t.status !== 'CONCLUIDA').length;
-  const countProximas = tasks.filter((t) => t.data > todayStr && t.status !== 'CONCLUIDA').length;
-  const countAtrasadas = tasks.filter((t) => t.status === 'ATRASADA').length;
+  const countHoje = tasks.filter((t) => t.data === todayStr && t.status !== 'CONCLUIDA' && t.status !== 'CANCELADA' && t.status !== 'AGUARDANDO_VALIDACAO').length;
+  const countEmAndamento = tasks.filter((t) => t.status === 'EM_ANDAMENTO').length;
+  const countAtrasadas = tasks.filter((t) => t.status === 'ATRASADA' && t.status !== 'CANCELADA' && t.status !== 'AGUARDANDO_VALIDACAO').length;
+  const countEmValidacao = tasks.filter((t) => t.status === 'AGUARDANDO_VALIDACAO').length;
   const countConcluidas = tasks.filter((t) => t.status === 'CONCLUIDA').length;
+  const countCanceladas = tasks.filter((t) => t.status === 'CANCELADA').length;
   const countBloqueadas = tasks.filter((t) => t.status === 'BLOQUEADA').length;
 
   // Actions
   const handleOpenCreate = () => {
-    setTaskToEdit(null);
     setIsFormModalOpen(true);
-  };
-
-  const handleOpenEdit = (task: TarefaOS) => {
-    setTaskToEdit(task);
-    setIsFormModalOpen(true);
-    setOpenMenuTaskId(null);
   };
 
   const handleOpenExecute = (task: TarefaOS) => {
@@ -209,17 +227,50 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
     setOpenMenuTaskId(null);
   };
 
-  const handleDelete = (taskId: string, osNumber: string) => {
-    if (window.confirm(`Deseja realmente excluir permanentemente a ${osNumber}?`)) {
-      dbStore.deleteTask(taskId);
-      setOpenMenuTaskId(null);
+  const handleDelete = (task: TarefaOS) => {
+    if (
+      task.status === 'CONCLUIDA' ||
+      task.status === 'AGUARDANDO_VALIDACAO' ||
+      task.status === 'EM_ANDAMENTO'
+    ) {
+      alert(
+        `Não é possível excluir esta Ordem de Serviço pois seu status atual é "${
+          task.status === 'CONCLUIDA'
+            ? 'Concluída'
+            : task.status === 'AGUARDANDO_VALIDACAO'
+            ? 'Em validação'
+            : 'Em andamento'
+        }". A exclusão é permitida apenas para tarefas que não estejam em andamento, em validação ou concluídas.`
+      );
+      return;
+    }
+
+    const comments = dbStore.getComments('TAREFA', task.id);
+    if (comments.length > 0) {
+      alert('Não é possível excluir esta Ordem de Serviço pois ela possui comentários e registros de comunicação arquivados.');
+      return;
+    }
+
+    if (window.confirm(`Deseja realmente excluir permanentemente a ${task.numero_os}? Esta ação não poderá ser desfeita.`)) {
+      try {
+        dbStore.deleteTask(task.id);
+        setOpenMenuTaskId(null);
+        loadData();
+      } catch (err: any) {
+        alert(err.message || 'Erro ao excluir a Ordem de Serviço.');
+      }
     }
   };
 
   const handleCancel = (taskId: string) => {
+    if (currentUser?.role === 'LIDER') {
+      alert('O perfil de Líder não possui permissão para cancelar Ordens de Serviço.');
+      return;
+    }
     if (window.confirm('Deseja cancelar esta Ordem de Serviço?')) {
-      dbStore.cancelTask(taskId);
+      dbStore.cancelTask(taskId, undefined, currentUser?.role);
       setOpenMenuTaskId(null);
+      loadData();
     }
   };
 
@@ -283,8 +334,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         </div>
       </div>
 
-      {/* Period Filter for All/Completed SubTabs */}
-      {(activeSubTab === 'todas' || activeSubTab === 'concluidas') && (
+      {/* Period Filter for All/Completed/Cancelled SubTabs */}
+      {(activeSubTab === 'todas' || activeSubTab === 'concluidas' || activeSubTab === 'canceladas') && (
         <div className="p-3 bg-white rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2 text-xs font-bold text-[#343A40]">
             <Calendar className="w-4 h-4 text-[#C76B4A]" />
@@ -299,7 +350,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         <div className="flex flex-wrap items-center gap-1.5 bg-[#F4EFEA] p-1 rounded-xl">
           {[
             { id: 'hoje', label: 'Hoje', count: countHoje, icon: <Clock className="w-3.5 h-3.5" /> },
-            { id: 'proximas', label: 'Próximas', count: countProximas, icon: <Calendar className="w-3.5 h-3.5" /> },
+            { id: 'em_andamento', label: 'Em andamento', count: countEmAndamento, icon: <Play className="w-3.5 h-3.5 text-blue-600" /> },
             {
               id: 'atrasadas',
               label: 'Atrasadas',
@@ -307,7 +358,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
               icon: <AlertTriangle className="w-3.5 h-3.5 text-red-500" />,
               alert: countAtrasadas > 0
             },
+            { id: 'em_validacao', label: 'Em Validação', count: countEmValidacao, icon: <Clock className="w-3.5 h-3.5 text-purple-600" /> },
             { id: 'concluidas', label: 'Concluídas', count: countConcluidas, icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> },
+            { id: 'canceladas', label: 'Canceladas', count: countCanceladas, icon: <Ban className="w-3.5 h-3.5 text-stone-500" /> },
             { id: 'todas', label: 'Todas as OS', count: tasks.length, icon: <FileText className="w-3.5 h-3.5" /> },
           ].map((tab) => (
             <button
@@ -467,10 +520,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
             )}
           </div>
         ) : (
-          filteredTasks.map((task) => {
+          paginatedTasks.map((task) => {
             const isCompleted = task.status === 'CONCLUIDA';
             const isBlocked = task.status === 'BLOQUEADA';
             const isOverdue = task.status === 'ATRASADA';
+            const isCancelled = task.status === 'CANCELADA';
             const isToday = task.data === todayStr;
 
             return (
@@ -481,6 +535,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                     ? 'border-red-300 ring-1 ring-red-200'
                     : isBlocked
                     ? 'border-amber-300 ring-1 ring-amber-200'
+                    : isCancelled
+                    ? 'border-stone-200 bg-stone-50/50 opacity-80'
                     : isCompleted
                     ? 'border-gray-200 opacity-90'
                     : 'border-gray-200 hover:border-gray-300'
@@ -530,6 +586,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           isCompleted
                             ? 'bg-emerald-100 text-emerald-800'
+                            : isCancelled
+                            ? 'bg-stone-100 text-stone-700 border border-stone-300'
                             : task.status === 'AGUARDANDO_VALIDACAO'
                             ? 'bg-purple-100 text-purple-800 border border-purple-200'
                             : isOverdue
@@ -622,6 +680,18 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                       </div>
                     )}
 
+                    {/* Cancellation Info if cancelled */}
+                    {isCancelled && (
+                      <div className="p-2 bg-stone-100 rounded-xl border border-stone-200 text-xs text-stone-700 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Ban className="w-4 h-4 text-stone-500 shrink-0" />
+                          <span>
+                            Ordem de Serviço Cancelada {task.motivo_bloqueio ? `• Motivo: ${task.motivo_bloqueio}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Completion Info if completed */}
                     {isCompleted && (
                       <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-2">
@@ -643,21 +713,29 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                   {/* Right Column: Actions */}
                   <div className="flex sm:flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-2 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100 shrink-0">
                     {/* Primary Button */}
-                    {!isCompleted ? (
-                      <button
-                        onClick={() => handleOpenExecute(task)}
-                        className="px-4 py-2 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-all w-full sm:w-auto justify-center"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                        Executar / Concluir OS
-                      </button>
-                    ) : (
+                    {isCompleted ? (
                       <button
                         onClick={() => handleOpenExecute(task)}
                         className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors w-full sm:w-auto justify-center"
                       >
                         <FileCheck2 className="w-4 h-4 text-emerald-600" />
                         Ver Evidências
+                      </button>
+                    ) : isCancelled ? (
+                      <button
+                        onClick={() => handleOpenExecute(task)}
+                        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors w-full sm:w-auto justify-center"
+                      >
+                        <Ban className="w-4 h-4 text-stone-500" />
+                        Ver Detalhes
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenExecute(task)}
+                        className="px-4 py-2 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-all w-full sm:w-auto justify-center"
+                      >
+                        <CheckSquare className="w-4 h-4" />
+                        Executar / Concluir OS
                       </button>
                     )}
 
@@ -672,6 +750,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                         <Printer className="w-4 h-4" />
                       </button>
 
+                      {/* Cancel OS Button (OM-03) - Only for ADMIN or GERENCIA (Never for LIDER, CONCLUIDA or CANCELADA) */}
+                      {currentUser?.role !== 'LIDER' && !isCompleted && !isCancelled && (
+                        <button
+                          onClick={() => {
+                            setTaskToCancel(task);
+                            setCancelReason('');
+                          }}
+                          title="Cancelar Ordem de Serviço"
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </button>
+                      )}
+
                       {/* Block / Unblock Toggle */}
                       {isBlocked ? (
                         <button
@@ -682,7 +774,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                           <Unlock className="w-4 h-4" />
                         </button>
                       ) : (
-                        !isCompleted && (
+                        !isCompleted && !isCancelled && (
                           <button
                             onClick={() => handleOpenBlock(task)}
                             title="Reportar Bloqueio"
@@ -705,16 +797,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
                           </button>
 
                           <button
-                            onClick={() => handleOpenEdit(task)}
-                            title="Editar OS"
-                            className="p-2 text-gray-500 hover:text-[#C76B4A] hover:bg-gray-100 rounded-lg transition-colors"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(task.id, task.numero_os)}
-                            title="Excluir OS"
+                            onClick={() => handleDelete(task)}
+                            title={
+                              task.status === 'CONCLUIDA' || task.status === 'AGUARDANDO_VALIDACAO' || task.status === 'EM_ANDAMENTO'
+                                ? 'Exclusão bloqueada para tarefas em andamento, em validação ou concluídas'
+                                : 'Excluir OS'
+                            }
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -730,11 +818,21 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         )}
       </div>
 
+      {/* Pagination Controls */}
+      <div className="bg-white rounded-2xl border border-[#EBE3DC] overflow-hidden shadow-xs">
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredTasks.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
+      </div>
+
       {/* Global Modals */}
       <TaskFormModal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
-        taskToEdit={taskToEdit}
+        taskToEdit={null}
       />
 
       <TaskExecutionModal
@@ -769,6 +867,72 @@ export const TasksView: React.FC<TasksViewProps> = ({ initialTab = 'hoje' }) => 
         isOpen={isCategoriesModalOpen}
         onClose={() => setIsCategoriesModalOpen(false)}
       />
+
+      {/* Cancel Confirmation Modal in TasksView (OM-03) */}
+      {taskToCancel && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto">
+              <Ban className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-base font-bold text-gray-900">
+                Cancelar Ordem de Serviço
+              </h3>
+              <p className="text-xs text-gray-600 leading-relaxed text-left">
+                Tem certeza que deseja cancelar a Ordem de Serviço <strong>{taskToCancel.numero_os}</strong>? Ela permanecerá visível na aba <strong>Canceladas</strong> para histórico e auditoria.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs font-semibold text-gray-700">
+                Motivo do cancelamento (opcional):
+              </label>
+              <textarea
+                rows={2}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ex: Operação suspensa pelo cliente, escopo alterado..."
+                className="w-full p-2 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:border-red-500"
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTaskToCancel(null);
+                  setCancelReason('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentUser?.role === 'LIDER') {
+                    alert('O perfil de Líder não possui permissão para cancelar Ordens de Serviço.');
+                    setTaskToCancel(null);
+                    setCancelReason('');
+                    return;
+                  }
+                  if (taskToCancel.status !== 'CONCLUIDA') {
+                    dbStore.cancelTask(taskToCancel.id, cancelReason.trim() || undefined, currentUser?.role);
+                  }
+                  setTaskToCancel(null);
+                  setCancelReason('');
+                  loadData();
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5"
+              >
+                <Ban className="w-4 h-4" />
+                Confirmar Cancelamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -32,7 +32,10 @@ import {
   ListFilter,
   Hash,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  FileText,
+  AlertCircle,
+  Paperclip
 } from 'lucide-react';
 
 interface TaskFormModalProps {
@@ -77,8 +80,14 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   // Evidence Requirements
   const [requisitos, setRequisitos] = useState<RequisitoConclusao[]>([]);
 
+  // Optional PDF attachment (OM-05)
+  const [anexoPdfNome, setAnexoPdfNome] = useState('');
+  const [anexoPdfUrl, setAnexoPdfUrl] = useState('');
+  const [anexoPdfTamanho, setAnexoPdfTamanho] = useState('');
+
   // Quick state for adding a new requirement item
   const [selectedReqType, setSelectedReqType] = useState<TaskEvidenceType>('CHECKLIST');
+  const [newChecklistItemTexts, setNewChecklistItemTexts] = useState<Record<string, string>>({});
 
   // Error handling
   const [errorMessage, setErrorMessage] = useState('');
@@ -131,6 +140,9 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         setRecorrencia(taskToEdit.recorrencia || 'UMA_VEZ');
         setDiasSemana(taskToEdit.recorrencia_config?.dias_semana || [1, 2, 3, 4, 5]);
         setRequisitos(taskToEdit.requisitos_conclusao ? [...taskToEdit.requisitos_conclusao] : []);
+        setAnexoPdfNome(taskToEdit.anexo_pdf_nome || '');
+        setAnexoPdfUrl(taskToEdit.anexo_pdf_url || '');
+        setAnexoPdfTamanho(taskToEdit.anexo_pdf_tamanho || '');
       } else {
         const todayStr = new Date().toISOString().split('T')[0];
         const defaultDeadline = new Date();
@@ -148,6 +160,9 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         setPrazo(defaultDeadline.toISOString().slice(0, 16));
         setRecorrencia('UMA_VEZ');
         setDiasSemana([1, 2, 3, 4, 5]);
+        setAnexoPdfNome('');
+        setAnexoPdfUrl('');
+        setAnexoPdfTamanho('');
         setRequisitos([
           {
             id: 'req-' + Date.now().toString(36),
@@ -332,6 +347,27 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   };
 
   // Checklist item actions
+  const handleAddNewChecklistItem = (reqId: string) => {
+    const text = (newChecklistItemTexts[reqId] || '').trim();
+    if (!text) return;
+    setRequisitos(
+      requisitos.map((r) => {
+        if (r.id === reqId) {
+          const items = r.checklist_itens || [];
+          return {
+            ...r,
+            checklist_itens: [
+              ...items,
+              { id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 4), texto: text, concluido: false },
+            ],
+          };
+        }
+        return r;
+      })
+    );
+    setNewChecklistItemTexts((prev) => ({ ...prev, [reqId]: '' }));
+  };
+
   const handleAddChecklistItem = (reqId: string) => {
     setRequisitos(
       requisitos.map((r) => {
@@ -376,6 +412,23 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         return r;
       })
     );
+  };
+
+  const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      setErrorMessage('Apenas arquivos no formato PDF são aceitos como documento de apoio.');
+      return;
+    }
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAnexoPdfNome(file.name);
+      setAnexoPdfTamanho(`${sizeMB} MB`);
+      setAnexoPdfUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Submit Handler
@@ -439,11 +492,14 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           validadores_nomes: valNames,
           data,
           horario,
-          prazo: prazo || undefined,
+          prazo: taskToEdit.prazo, // OM-03: Imutável após a criação
           status: taskToEdit.status,
           recorrencia,
           recorrencia_config: recorrencia === 'PERSONALIZADA' ? { dias_semana: diasSemana, horario_custom: horario } : undefined,
           requisitos_conclusao: requisitos,
+          anexo_pdf_nome: anexoPdfNome || undefined,
+          anexo_pdf_url: anexoPdfUrl || undefined,
+          anexo_pdf_tamanho: anexoPdfTamanho || undefined,
         };
 
         const savedTask = dbStore.updateTask(taskToEdit.id, payload);
@@ -477,6 +533,9 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           recorrencia,
           recorrencia_config: recorrencia === 'PERSONALIZADA' ? { dias_semana: diasSemana, horario_custom: horario } : undefined,
           requisitos_conclusao: requisitos,
+          anexo_pdf_nome: anexoPdfNome || undefined,
+          anexo_pdf_url: anexoPdfUrl || undefined,
+          anexo_pdf_tamanho: anexoPdfTamanho || undefined,
         };
 
         if (autoIdentifiedLeaders.length > 1) {
@@ -605,7 +664,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Prioridade Operacional
+                  Prioridade
                 </label>
                 <select
                   value={prioridade}
@@ -784,48 +843,65 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   Prazo Limite / Tolerância (SLA)
+                  {taskToEdit && (
+                    <span className="ml-1 text-[10px] text-amber-700 font-bold">
+                      (🔒 Imutável após criação)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="datetime-local"
                   min={new Date().toISOString().slice(0, 16)}
                   value={prazo}
                   onChange={(e) => setPrazo(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
+                  disabled={!!taskToEdit}
+                  className={`w-full px-3 py-2 text-xs rounded-xl border focus:outline-hidden ${
+                    taskToEdit
+                      ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed'
+                      : 'bg-white text-gray-800 border-gray-200 focus:border-[#C76B4A]'
+                  }`}
                 />
+                {taskToEdit && (
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    O prazo de uma OS não pode ser alterado após sua criação para manter a integridade do histórico operacional.
+                  </p>
+                )}
               </div>
 
-              {/* Quick SLA buttons */}
-              <div className="sm:col-span-3 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-gray-400 font-medium text-[11px]">Atalhos de Prazo:</span>
-                <button
-                  type="button"
-                  onClick={() => applyQuickDeadline(2)}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
-                >
-                  +2 Horas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyQuickDeadline(4)}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
-                >
-                  +4 Horas
-                </button>
-                <button
-                  type="button"
-                  onClick={applyEndOfDayDeadline}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
-                >
-                  Hoje até 18:00
-                </button>
-                <button
-                  type="button"
-                  onClick={applyTomorrowDeadline}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
-                >
-                  Amanhã 12:00
-                </button>
-              </div>
+              {/* Quick SLA buttons (only on task creation) */}
+              {!taskToEdit && (
+                <div className="sm:col-span-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-gray-400 font-medium text-[11px]">Atalhos de Prazo:</span>
+                  <button
+                    type="button"
+                    onClick={() => applyQuickDeadline(2)}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
+                  >
+                    +2 Horas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyQuickDeadline(4)}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
+                  >
+                    +4 Horas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyEndOfDayDeadline}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
+                  >
+                    Hoje até 18:00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyTomorrowDeadline}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-medium transition-colors"
+                  >
+                    Amanhã 12:00
+                  </button>
+                </div>
+              )}
 
               {/* Recurrence Selector */}
               <div className="sm:col-span-3 p-4 bg-[#F8F9FA] rounded-xl border border-gray-200 space-y-3">
@@ -902,13 +978,91 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Dynamic Evidence / Completion Requirements Builder */}
+          {/* Section 3: Documento de Apoio / PDF Opcional (Material de Referência) */}
+          <div className="space-y-3 p-4 bg-amber-50/50 rounded-2xl border border-amber-200/80">
+            <div className="flex items-center justify-between pb-2 border-b border-amber-200/60">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#C76B4A]" />
+                <h3 className="text-xs font-bold text-[#343A40] uppercase tracking-wider">
+                  3. Documento de Apoio / PDF Opcional (Material de Referência)
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                Opcional
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-600 leading-relaxed">
+              Permite anexar um documento em PDF (como POP, manual técnico ou instrução de trabalho) para o Líder consultar durante a execução da OS.
+            </p>
+
+            {/* Warning requirement note as strictly specified in OM-05 */}
+            <div className="p-3 bg-white rounded-xl border border-amber-300 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-bold block text-amber-900">Aviso sobre Evidências Obrigatórias:</span>
+                Este documento PDF anexado é exclusivamente para apoio e consulta do Líder. Ele <strong>NÃO substitui nem dispensa</strong> a comprovação obrigatória das evidências configuradas no Tipo de Conclusão / Critérios da OS (ex: fotos, checklists, medições ou formulários).
+              </div>
+            </div>
+
+            {anexoPdfNome ? (
+              <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-emerald-300 shadow-2xs">
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs font-bold text-stone-800 truncate">{anexoPdfNome}</div>
+                    <div className="text-[10px] text-stone-500">{anexoPdfTamanho || 'Documento PDF'}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnexoPdfNome('');
+                    setAnexoPdfUrl('');
+                    setAnexoPdfTamanho('');
+                  }}
+                  className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 font-semibold"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Remover PDF
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-dashed border-stone-300 hover:border-[#C76B4A] rounded-xl text-xs font-semibold text-stone-700 cursor-pointer transition shadow-2xs">
+                  <FileUp className="w-4 h-4 text-[#C76B4A]" />
+                  <span>Selecionar arquivo PDF do computador...</span>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handlePdfFileChange}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnexoPdfNome('Procedimento_Operacional_Padrao_POP_04.pdf');
+                    setAnexoPdfTamanho('1.4 MB');
+                    setAnexoPdfUrl('data:application/pdf;base64,JVBERi0xLjQKJcTl8uXr...');
+                  }}
+                  className="px-3.5 py-3 text-xs text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl font-semibold transition"
+                >
+                  Usar PDF Modelo (POP)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Section 4: Dynamic Evidence / Completion Requirements Builder */}
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#8B6B4A]" />
                 <h3 className="text-xs font-bold text-[#343A40] uppercase tracking-wider">
-                  3. Critérios & Requisitos de Conclusão (Evidências)
+                  4. Critérios & Requisitos de Conclusão (Evidências Obrigatórias)
                 </h3>
               </div>
               <span className="text-[11px] text-[#C76B4A] font-semibold">
@@ -996,6 +1150,13 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                               onChange={(e) =>
                                 handleUpdateChecklistItem(req.id, item.id, e.target.value)
                               }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddChecklistItem(req.id);
+                                }
+                              }}
                               className="flex-1 px-2 py-1 text-xs bg-white rounded-md border border-gray-200 focus:outline-hidden focus:border-[#C76B4A]"
                             />
                             <button
@@ -1007,6 +1168,33 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                             </button>
                           </div>
                         ))}
+
+                        {/* Dedicated input to add new checklist item with Enter without submitting the form */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <input
+                            type="text"
+                            placeholder="Digitar item do checklist e pressionar Enter..."
+                            value={newChecklistItemTexts[req.id] || ''}
+                            onChange={(e) =>
+                              setNewChecklistItemTexts((prev) => ({ ...prev, [req.id]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleAddNewChecklistItem(req.id);
+                              }
+                            }}
+                            className="flex-1 px-2.5 py-1 text-xs bg-white rounded-md border border-dashed border-[#C76B4A]/50 focus:border-[#C76B4A] focus:outline-hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddNewChecklistItem(req.id)}
+                            className="px-2.5 py-1 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-[11px] font-bold rounded-md flex items-center gap-1 shadow-2xs transition-colors shrink-0"
+                          >
+                            <Plus className="w-3 h-3" /> Adicionar
+                          </button>
+                        </div>
                       </div>
                     )}
 

@@ -24,6 +24,7 @@ import { Meta, GoalPeriodicity, GoalDirection, Projeto, UsuarioPerfil } from '..
 import { useAuth } from '../../context/AuthContext';
 import { GoalImportModal } from './GoalImportModal';
 import { PeriodFilter, PeriodSelection, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 
 export const GoalsManagementView: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -36,6 +37,7 @@ export const GoalsManagementView: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('TODOS');
   const [selectedLeaderId, setSelectedLeaderId] = useState<string>('TODOS');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [period, setPeriod] = useState<PeriodFilterValue>({
     mode: 'TODOS',
     year: new Date().getFullYear(),
@@ -251,6 +253,16 @@ export const GoalsManagementView: React.FC = () => {
     });
   }, [goals, selectedPeriodicity, selectedProjectId, selectedLeaderId, searchTerm, period]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedPeriodicity, selectedProjectId, selectedLeaderId, searchTerm, period]);
+
+  const paginatedGoals = useMemo(() => {
+    const start = (currentPage - 1) * 10;
+    return filteredGoals.slice(start, start + 10);
+  }, [filteredGoals, currentPage]);
+
   // Summary Metrics
   const metrics = useMemo(() => {
     const total = goals.length;
@@ -463,7 +475,7 @@ export const GoalsManagementView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredGoals.map((goal) => {
+                paginatedGoals.map((goal) => {
                   const isSmallerBetter = goal.direcao_melhor === 'MENOR_MELHOR';
                   let percent = 0;
                   let isReached = false;
@@ -573,6 +585,14 @@ export const GoalsManagementView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredGoals.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Create / Edit Goal Modal */}

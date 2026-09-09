@@ -26,6 +26,7 @@ import { dbStore } from '../../services/dbStore';
 import { Meta, GoalPeriodicity, ApontamentoMeta, Projeto } from '../../types/database';
 import { CommentsThread } from '../comments/CommentsThread';
 import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 
 // Helper utilities for Business Days and Date Formatting
 const getTodayDate = () => {
@@ -58,6 +59,7 @@ export const LeaderGoalsView: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('TODOS');
   const [selectedTab, setSelectedTab] = useState<GoalPeriodicity | 'TODAS'>('TODAS');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [activeGoalForComments, setActiveGoalForComments] = useState<Meta | null>(null);
   const [activeGoalForUpdate, setActiveGoalForUpdate] = useState<Meta | null>(null);
   const [selectedApontamentoDate, setSelectedApontamentoDate] = useState<'HOJE' | 'DIA_UTIL_ANTERIOR'>('HOJE');
@@ -119,6 +121,16 @@ export const LeaderGoalsView: React.FC = () => {
       return matchTab && matchSearch && matchPeriod && matchProject;
     });
   }, [goals, selectedTab, selectedProjectId, searchTerm, period, todayIso]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTab, selectedProjectId, searchTerm, period]);
+
+  const paginatedGoals = useMemo(() => {
+    const start = (currentPage - 1) * 10;
+    return filteredGoals.slice(start, start + 10);
+  }, [filteredGoals, currentPage]);
 
   // Consolidated monthly calculation
   const monthlyGoals = useMemo(() => {
@@ -516,8 +528,9 @@ export const LeaderGoalsView: React.FC = () => {
           </p>
         </div>
       ) : (
+        <>
         <div id="goals-cards-grid" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredGoals.map((goal) => {
+          {paginatedGoals.map((goal) => {
             const statusInfo = getGoalStatusInfo(goal);
             return (
               <div
@@ -710,6 +723,16 @@ export const LeaderGoalsView: React.FC = () => {
             );
           })}
         </div>
+
+        <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredGoals.length}
+            pageSize={10}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+        </>
       )}
 
       {/* Realized Value Input Modal */}

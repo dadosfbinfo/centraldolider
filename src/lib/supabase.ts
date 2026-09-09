@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.unidades (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     nome VARCHAR(255) NOT NULL,
     regional VARCHAR(100),
-    codigo VARCHAR(50) UNIQUE NOT NULL,
+    codigo VARCHAR(50) UNIQUE,
     cidade VARCHAR(100),
     estado VARCHAR(50),
     endereco TEXT,
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS public.lideres (
     usuario_id UUID REFERENCES public.usuarios(id) ON DELETE CASCADE,
     nome VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    matricula VARCHAR(50) UNIQUE NOT NULL,
+    matricula VARCHAR(50) UNIQUE,
     cargo VARCHAR(100) NOT NULL,
     unidade VARCHAR(255) NOT NULL,
     unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
@@ -151,6 +151,9 @@ CREATE TABLE IF NOT EXISTS public.tarefas_os (
     recusado_por_nome VARCHAR(255),
     data_recusa TIMESTAMP WITH TIME ZONE,
     parent_os_id UUID REFERENCES public.tarefas_os(id) ON DELETE SET NULL,
+    anexo_pdf_url TEXT,
+    anexo_pdf_nome VARCHAR(255),
+    anexo_pdf_tamanho VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -359,7 +362,7 @@ CREATE POLICY "Admins podem deletar usuarios" ON public.usuarios FOR DELETE USIN
 -- RLS: TAREFAS_OS (Admin/Gerência gerenciam; Líder vê e executa as suas)
 CREATE POLICY "Tarefas leitura" ON public.tarefas_os FOR SELECT USING (public.is_admin_or_gerencia() OR responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids));
 CREATE POLICY "Tarefas criacao e edicao gestao" ON public.tarefas_os FOR ALL USING (public.is_admin_or_gerencia());
-CREATE POLICY "Lider atualiza status e evidencias tarefa" ON public.tarefas_os FOR UPDATE USING (responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids));
+CREATE POLICY "Lider atualiza status e evidencias tarefa" ON public.tarefas_os FOR UPDATE USING (responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids)) WITH CHECK (status IS DISTINCT FROM 'CANCELADA' OR public.is_admin_or_gerencia());
 
 -- RLS: NOTIFICACOES
 CREATE POLICY "Usuario gerencia suas notificacoes" ON public.notificacoes FOR ALL USING (usuario_id = auth.uid() OR public.is_admin());
@@ -367,6 +370,102 @@ CREATE POLICY "Usuario gerencia suas notificacoes" ON public.notificacoes FOR AL
 -- RLS: COMENTARIOS
 CREATE POLICY "Leitura de comentarios" ON public.comentarios FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Criacao de comentarios" ON public.comentarios FOR INSERT TO authenticated WITH CHECK (auth.uid() = autor_id);
+
+-- ==============================================================================
+-- VIEWS E CONSULTAS ANALÍTICAS PRINCIPAIS DO SISTEMA
+-- ==============================================================================
+
+-- 1. VIEW: Ordens de Serviço (OS) Detalhadas com Categorias e Validações
+CREATE OR REPLACE VIEW public.vw_tarefas_os_detalhadas AS
+SELECT 
+    os.id,
+    os.numero_os,
+    os.titulo,
+    os.tipo_operacao,
+    os.prioridade,
+    os.status,
+    os.data,
+    os.horario,
+    os.prazo,
+    os.responsavel_nome,
+    os.responsavel_email,
+    os.projetos_nomes,
+    os.lideres_nomes,
+    os.validadores_nomes,
+    COALESCE(jsonb_array_length(os.validacoes_aprovadas), 0) AS total_aprovacoes,
+    os.validado_por_nome,
+    os.validado_por_role,
+    os.data_validacao,
+    os.motivo_recusa,
+    os.data_recusa,
+    c.nome AS categoria_nome,
+    c.cor AS categoria_cor,
+    os.tempo_execucao_minutos,
+    os.created_at,
+    os.updated_at
+FROM public.tarefas_os os
+LEFT JOIN public.categorias c ON c.id = os.categoria_id;
+
+-- 2. VIEW: Metas com Cálculo de Atingimento e Direção de Melhoria
+CREATE OR REPLACE VIEW public.vw_metas_progresso AS
+SELECT 
+    m.id,
+    m.indicador,
+    m.meta_valor,
+    m.valor_atual,
+    m.unidade_medida,
+    m.tipo_periodo,
+    m.periodo,
+    m.direcao_melhor,
+    m.status,
+    CASE 
+        WHEN m.direcao_melhor = 'MAIOR_MELHOR' THEN 
+            ROUND((m.valor_atual / NULLIF(m.meta_valor, 0)) * 100, 2)
+        ELSE 
+            ROUND((m.meta_valor / NULLIF(m.valor_atual, 0)) * 100, 2)
+    END AS percentual_atingimento,
+    m.projetos_nomes,
+    m.lideres_nomes,
+    COALESCE(jsonb_array_length(m.historico_apontamentos), 0) AS total_apontamentos,
+    m.data_ultimo_apontamento,
+    m.created_at,
+    m.updated_at
+FROM public.metas m;
+
+-- 3. VIEW: Líderes com Gestores Imediatos e Múltiplos Projetos
+CREATE OR REPLACE VIEW public.vw_lideres_gestao AS
+SELECT 
+    l.id,
+    l.nome,
+    l.email,
+    l.matricula,
+    l.cargo,
+    l.regional,
+    l.gestor,
+    l.status,
+    l.projetos_nomes,
+    l.gestores_imediatos_nomes,
+    u.role AS usuario_role,
+    u.status_confirmacao,
+    l.telefone,
+    l.created_at,
+    l.updated_at
+FROM public.lideres l
+LEFT JOIN public.usuarios u ON u.id = l.usuario_id;
+
+-- 4. VIEW: Desempenho e Produtividade Operacional por Líder
+CREATE OR REPLACE VIEW public.vw_produtividade_lideres AS
+SELECT 
+    os.responsavel_nome AS lider_nome,
+    COUNT(*) AS total_os,
+    COUNT(*) FILTER (WHERE os.status = 'CONCLUIDA') AS concluidas,
+    COUNT(*) FILTER (WHERE os.status = 'AGUARDANDO_VALIDACAO') AS aguardando_validacao,
+    COUNT(*) FILTER (WHERE os.status = 'EM_ANDAMENTO') AS em_andamento,
+    COUNT(*) FILTER (WHERE os.status = 'ATRASADA') AS atrasadas,
+    COUNT(*) FILTER (WHERE os.status = 'BLOQUEADA') AS bloqueadas,
+    ROUND(AVG(os.tempo_execucao_minutos), 1) AS tempo_medio_minutos
+FROM public.tarefas_os os
+GROUP BY os.responsavel_nome;
 
 -- ==============================================================================
 -- STORAGE BUCKETS (SUPABASE STORAGE)

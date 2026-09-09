@@ -18,6 +18,7 @@ import { dbStore } from '../../services/dbStore';
 import { Relatorio, ReportType, Projeto } from '../../types/database';
 import { ReportViewerModal } from '../reports/ReportViewerModal';
 import { PeriodFilter, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 
 export const LeaderReportsView: React.FC = () => {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export const LeaderReportsView: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<ReportType | 'TODOS'>('TODOS');
   const [searchTerm, setSearchTerm] = useState('');
   const [readingReport, setReadingReport] = useState<Relatorio | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [period, setPeriod] = useState<PeriodFilterValue>({
     mode: 'TODOS',
@@ -75,6 +77,16 @@ export const LeaderReportsView: React.FC = () => {
     });
   }, [reports, selectedTab, selectedProjectId, searchTerm, period]);
 
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTab, selectedProjectId, searchTerm, period]);
+
+  const paginatedReports = useMemo(() => {
+    const start = (currentPage - 1) * 10;
+    return filteredReports.slice(start, start + 10);
+  }, [filteredReports, currentPage]);
+
   // Statistics
   const stats = useMemo(() => {
     if (!user) return { total: 0, confirmed: 0, pending: 0 };
@@ -97,6 +109,22 @@ export const LeaderReportsView: React.FC = () => {
 
   const handleDownloadDirect = (e: React.MouseEvent, report: Relatorio) => {
     e.stopPropagation();
+    const isPdf = !!(
+      (report.arquivo_pdf_url && (report.arquivo_pdf_url.startsWith('data:application/pdf') || report.arquivo_pdf_url.startsWith('blob:'))) ||
+      (report.arquivo_pdf_conteudo && report.arquivo_pdf_conteudo.startsWith('data:application/pdf'))
+    );
+
+    if (isPdf) {
+      const pdfUrl = report.arquivo_pdf_url || report.arquivo_pdf_conteudo;
+      const a = document.createElement('a');
+      a.href = pdfUrl!;
+      a.download = report.arquivo_pdf_nome || `${report.titulo.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     const content = report.arquivo_pdf_conteudo || report.descricao || report.titulo;
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -248,108 +276,119 @@ export const LeaderReportsView: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredReports.map((report) => {
-            const userConfirmation = user
-              ? report.confirmacoes_leitura?.find((c) => c.usuario_id === user.id)
-              : undefined;
-            const isConfirmed = !!userConfirmation;
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {paginatedReports.map((report) => {
+              const userConfirmation = user
+                ? report.confirmacoes_leitura?.find((c) => c.usuario_id === user.id)
+                : undefined;
+              const isConfirmed = !!userConfirmation;
 
-            return (
-              <div
-                key={report.id}
-                id={`card-report-${report.id}`}
-                onClick={() => handleOpenViewer(report)}
-                className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all shadow-xs cursor-pointer flex flex-col justify-between group hover:shadow-md ${
-                  isConfirmed
-                    ? 'border-stone-200 hover:border-emerald-300'
-                    : 'border-orange-300/80 bg-orange-50/20 hover:border-orange-400'
-                }`}
-              >
-                <div>
-                  {/* Top tags & status */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-stone-100 text-stone-600 border border-stone-200">
-                        {report.tipo}
-                      </span>
-                      <span className="text-xs text-stone-500 font-medium flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {report.periodo}
-                      </span>
+              return (
+                <div
+                  key={report.id}
+                  id={`card-report-${report.id}`}
+                  onClick={() => handleOpenViewer(report)}
+                  className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all shadow-xs cursor-pointer flex flex-col justify-between group hover:shadow-md ${
+                    isConfirmed
+                      ? 'border-stone-200 hover:border-emerald-300'
+                      : 'border-orange-300/80 bg-orange-50/20 hover:border-orange-400'
+                  }`}
+                >
+                  <div>
+                    {/* Top tags & status */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                          {report.tipo}
+                        </span>
+                        <span className="text-xs text-stone-500 font-medium flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {report.periodo}
+                        </span>
+                      </div>
+
+                      {isConfirmed ? (
+                        <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Lido
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-orange-100 text-orange-900 border border-orange-300 shrink-0 flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Leitura Pendente
+                        </span>
+                      )}
                     </div>
 
-                    {isConfirmed ? (
-                      <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Lido
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-orange-100 text-orange-900 border border-orange-300 shrink-0 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Leitura Pendente
-                      </span>
-                    )}
-                  </div>
+                    {/* Title & Description */}
+                    <h3 className="text-base font-bold text-stone-900 group-hover:text-[#C76B4A] transition-colors leading-snug mb-1.5">
+                      {report.titulo}
+                    </h3>
 
-                  {/* Title & Description */}
-                  <h3 className="text-base font-bold text-stone-900 group-hover:text-[#C76B4A] transition-colors leading-snug mb-1.5">
-                    {report.titulo}
-                  </h3>
+                    <p className="text-xs text-stone-500 line-clamp-2 mb-4 leading-relaxed">
+                      {report.descricao}
+                    </p>
 
-                  <p className="text-xs text-stone-500 line-clamp-2 mb-4 leading-relaxed">
-                    {report.descricao}
-                  </p>
-
-                  {/* PDF Document badge */}
-                  <div className="p-2.5 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between text-xs mb-3">
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-[10px]">
-                        PDF
-                      </span>
-                      <span className="font-semibold text-stone-800 truncate">
-                        {report.arquivo_pdf_nome || 'Relatorio_Operacional.pdf'}
+                    {/* PDF Document badge */}
+                    <div className="p-2.5 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between text-xs mb-3">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-[10px]">
+                          PDF
+                        </span>
+                        <span className="font-semibold text-stone-800 truncate">
+                          {report.arquivo_pdf_nome || 'Relatorio_Operacional.pdf'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-stone-600 shrink-0 font-medium">
+                        {report.arquivo_pdf_tamanho || '2.4 MB'}
                       </span>
                     </div>
-                    <span className="text-[10px] text-stone-600 shrink-0 font-medium">
-                      {report.arquivo_pdf_tamanho || '2.4 MB'}
-                    </span>
+                  </div>
+
+                  {/* Footer bar */}
+                  <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-2 text-xs">
+                    <div className="text-[11px] text-stone-400">
+                      {isConfirmed ? (
+                        <span className="text-emerald-700 font-medium">
+                          Confirmado em {formatDateTime(userConfirmation.data_confirmacao || (userConfirmation as any).data_hora)}
+                        </span>
+                      ) : (
+                        <span className="text-orange-900 font-semibold">
+                          Clique para ler e confirmar
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {canDownload && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleDownloadDirect(e, report)}
+                          className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors"
+                          title="Baixar Arquivo PDF"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <span className="inline-flex items-center gap-1 text-[#C76B4A] font-bold text-xs group-hover:translate-x-0.5 transition-transform">
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>Abrir Documento</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Footer bar */}
-                <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-2 text-xs">
-                  <div className="text-[11px] text-stone-400">
-                    {isConfirmed ? (
-                      <span className="text-emerald-700 font-medium">
-                        Confirmado em {formatDateTime(userConfirmation.data_confirmacao || (userConfirmation as any).data_hora)}
-                      </span>
-                    ) : (
-                      <span className="text-orange-900 font-semibold">
-                        Clique para ler e confirmar
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    {canDownload && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleDownloadDirect(e, report)}
-                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors"
-                        title="Baixar Arquivo PDF"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    <span className="inline-flex items-center gap-1 text-[#C76B4A] font-bold text-xs group-hover:translate-x-0.5 transition-transform">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Abrir Documento</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredReports.length}
+              pageSize={10}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         </div>
       )}
 

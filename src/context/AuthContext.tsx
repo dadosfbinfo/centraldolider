@@ -17,6 +17,8 @@ export type NavigationTab =
   | 'admin-relatorios'
   | 'admin-calendario';
 
+export type TaskSubTab = 'hoje' | 'em_andamento' | 'atrasadas' | 'em_validacao' | 'concluidas' | 'canceladas' | 'todas';
+
 interface AuthContextType {
   currentUser: UsuarioPerfil | null;
   user: UsuarioPerfil | null;
@@ -24,6 +26,9 @@ interface AuthContextType {
   isLoading: boolean;
   activeTab: NavigationTab;
   setActiveTab: (tab: NavigationTab) => void;
+  taskSubTab: TaskSubTab;
+  setTaskSubTab: (subTab: TaskSubTab) => void;
+  navigateToTasks: (subTab?: TaskSubTab) => void;
   login: (email: string, password: string) => Promise<UsuarioPerfil>;
   register: (params: {
     email: string;
@@ -52,7 +57,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<UsuarioPerfil | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<NavigationTab>('inicio');
+  const [taskSubTab, setTaskSubTab] = useState<TaskSubTab>('hoje');
   const [allUsers, setAllUsers] = useState<UsuarioPerfil[]>([]);
+
+  const navigateToTasks = (subTab: TaskSubTab = 'hoje') => {
+    setTaskSubTab(subTab);
+    const destinationTab: NavigationTab = currentUser?.role === 'ADMINISTRADOR' ? 'admin-tarefas' : 'minhas-tarefas';
+    setActiveTab(destinationTab);
+  };
 
   // Synchronize users and current session from store
   const refreshState = useCallback(() => {
@@ -175,6 +187,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         activeTab,
         setActiveTab,
+        taskSubTab,
+        setTaskSubTab,
+        navigateToTasks,
         login,
         register,
         confirmEmail,

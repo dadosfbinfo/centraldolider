@@ -22,6 +22,7 @@ interface TaskImportModalProps {
 }
 
 interface ParsedTaskRow {
+  numero_os?: string;
   titulo: string;
   tipo_operacao?: string;
   prioridade: TaskPriority;
@@ -34,6 +35,7 @@ interface ParsedTaskRow {
   categoria?: string;
   recorrencia?: string;
   exigencia_conclusao?: string;
+  checklist_itens_texto?: string;
   descricao?: string;
   isValid: boolean;
   validationError?: string;
@@ -67,34 +69,55 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
   const handleDownloadTemplate = () => {
     const templateData = [
       {
+        'Número OS (Opcional)': '',
         'Título da Tarefa *': 'Auditoria de Abertura de Loja e Caixa',
         'Tipo da Operação': 'Rotina Operacional',
         'Prioridade (BAIXA, MEDIA, ALTA, CRITICA)': 'ALTA',
+        'Categoria': 'Rotina Operacional',
         'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros, Unidade Rio de Janeiro - Barra da Tijuca',
         'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br, roberto.almeida@centraldolider.com.br',
         'Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)': 'admin@centraldolider.com.br',
         'Data (YYYY-MM-DD) *': new Date().toISOString().split('T')[0],
         'Horário (HH:mm)': '08:00',
         'Prazo (YYYY-MM-DD)': new Date(Date.now() + 86400000).toISOString().split('T')[0],
-        'Categoria': 'Rotina Operacional',
         'Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)': 'UMA_VEZ',
         'Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)': 'CHECKLIST',
-        'Descrição': 'Conferir numerário em caixa e itens de segurança antes da abertura.',
+        'Itens do Checklist (separados por ponto e vírgula ;)': 'Conferir numerário em caixa; Verificar itens de segurança e alarme; Checar escala de operadores',
+        'Descrição': 'Conferir numerário em caixa e itens de segurança antes da abertura oficial das portas.',
       },
       {
+        'Número OS (Opcional)': '',
         'Título da Tarefa *': 'Inspeção Semanal de Extintores e Iluminação',
         'Tipo da Operação': 'Preventiva',
         'Prioridade (BAIXA, MEDIA, ALTA, CRITICA)': 'MEDIA',
+        'Categoria': 'Segurança & Saúde',
         'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade Rio de Janeiro - Barra da Tijuca',
         'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'roberto.almeida@centraldolider.com.br',
         'Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)': 'admin@centraldolider.com.br',
         'Data (YYYY-MM-DD) *': new Date().toISOString().split('T')[0],
         'Horário (HH:mm)': '10:30',
         'Prazo (YYYY-MM-DD)': new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-        'Categoria': 'Segurança & Saúde',
         'Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)': 'SEMANAL',
         'Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)': 'FOTO',
-        'Descrição': 'Verificar lacres e manômetros de todos os extintores do piso.',
+        'Itens do Checklist (separados por ponto e vírgula ;)': '',
+        'Descrição': 'Verificar lacres e manômetros de todos os extintores do piso e fotografar o painel.',
+      },
+      {
+        'Número OS (Opcional)': '',
+        'Título da Tarefa *': 'Inventário Físico Rotativo de Estoque',
+        'Tipo da Operação': 'Auditoria',
+        'Prioridade (BAIXA, MEDIA, ALTA, CRITICA)': 'CRITICA',
+        'Categoria': 'Gestão de Estoque',
+        'Projeto(s) (Nomes ou Códigos separados por vírgula)': 'Unidade São Paulo - Matriz Pinheiros',
+        'Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)': 'mariana.costa@centraldolider.com.br',
+        'Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)': 'admin@centraldolider.com.br',
+        'Data (YYYY-MM-DD) *': new Date().toISOString().split('T')[0],
+        'Horário (HH:mm)': '16:00',
+        'Prazo (YYYY-MM-DD)': new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+        'Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)': 'MENSAL',
+        'Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)': 'NUMERO',
+        'Itens do Checklist (separados por ponto e vírgula ;)': '',
+        'Descrição': 'Contagem de SKUs de alto giro na câmara fria e lançamento de divergências.',
       },
     ];
 
@@ -130,14 +153,34 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
 
         const validPriorities: TaskPriority[] = ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'];
 
-        const parsed: ParsedTaskRow[] = rawJson.map((row: any, idx: number) => {
+        const formatExcelDate = (val: any) => {
+          if (!val) return '';
+          if (typeof val === 'number') {
+            const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+            return jsDate.toISOString().split('T')[0];
+          }
+          return String(val).trim();
+        };
+
+        const parsed: ParsedTaskRow[] = rawJson.map((row: any) => {
           // Normalize column headers
+          const numero_os = (
+            row['Número OS (Opcional)'] ||
+            row['Número OS'] ||
+            row['Numero OS'] ||
+            row['Código OS'] ||
+            row['Codigo OS'] ||
+            row['OS'] ||
+            ''
+          ).toString().trim();
+
           const titulo =
             row['Título da Tarefa *'] ||
             row['Título da Tarefa'] ||
             row['Titulo'] ||
             row['Título'] ||
             row['Nome'] ||
+            row['Nome da Tarefa'] ||
             '';
 
           const tipo_operacao =
@@ -163,51 +206,91 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
 
           const projeto =
             row['Projeto(s) (Nomes ou Códigos separados por vírgula)'] ||
+            row['Projeto(s)'] ||
+            row['Projetos'] ||
             row['Projeto'] ||
+            row['Unidade(s)'] ||
+            row['Unidades'] ||
             row['Unidade'] ||
             row['Projeto/Unidade'] ||
             '';
 
           const responsavel =
             row['Líder(es) Responsável(eis) (E-mails ou Nomes separados por vírgula)'] ||
+            row['Líder(es) Responsável(eis)'] ||
+            row['Líderes Responsáveis'] ||
+            row['Líder Responsável (E-mail ou Nome)'] ||
             row['Responsável (E-mail ou Nome)'] ||
             row['Responsável'] ||
+            row['Responsáveis'] ||
             row['Líder'] ||
+            row['Lider'] ||
             '';
 
           const validadores =
             row['Validador(es) Gestor(es) (E-mails ou Nomes separados por vírgula)'] ||
             row['Validador(es)'] ||
+            row['Validadores'] ||
             row['Gestores Validadores'] ||
+            row['Gestor Validador'] ||
+            row['Aprovadores'] ||
             '';
 
-          let data =
+          let data = formatExcelDate(
             row['Data (YYYY-MM-DD) *'] ||
             row['Data (YYYY-MM-DD)'] ||
             row['Data'] ||
-            new Date().toISOString().split('T')[0];
+            new Date().toISOString().split('T')[0]
+          );
 
-          if (typeof data === 'number') {
-            // Excel serial date to YYYY-MM-DD
-            const jsDate = new Date(Math.round((data - 25569) * 86400 * 1000));
-            data = jsDate.toISOString().split('T')[0];
-          } else {
-            data = data.toString().trim();
-          }
+          const horario = (
+            row['Horário (HH:mm)'] ||
+            row['Horario'] ||
+            row['Horário'] ||
+            row['Hora'] ||
+            '08:00'
+          ).toString().trim();
 
-          const horario = row['Horário (HH:mm)'] || row['Horario'] || row['Horário'] || '08:00';
-          const prazo = row['Prazo (YYYY-MM-DD)'] || row['Prazo'] || '';
-          const categoria = row['Categoria'] || 'Rotina Operacional';
+          const prazo = formatExcelDate(
+            row['Prazo (YYYY-MM-DD)'] ||
+            row['Prazo Limite'] ||
+            row['Prazo'] ||
+            ''
+          );
+
+          const categoria =
+            row['Categoria'] ||
+            row['Categoria da OS'] ||
+            row['Tipo de Categoria'] ||
+            'Rotina Operacional';
+
           const recorrencia =
             row['Recorrência (UMA_VEZ, DIARIA, DIAS_UTEIS, SEMANAL, MENSAL)'] ||
             row['Recorrência'] ||
+            row['Recorrencia'] ||
             'UMA_VEZ';
+
           const exigencia_conclusao =
             row['Exigência Conclusão (CHECKLIST, FOTO, TEXTO, NUMERO, ARQUIVO, SIMPLES)'] ||
             row['Exigência Conclusão'] ||
             row['Exigência'] ||
+            row['Exigencia'] ||
+            row['Tipo de Evidência'] ||
             'CHECKLIST';
-          const descricao = row['Descrição'] || row['Descricao'] || '';
+
+          const checklist_itens_texto = (
+            row['Itens do Checklist (separados por ponto e vírgula ;)'] ||
+            row['Itens do Checklist'] ||
+            row['Checklist'] ||
+            ''
+          ).toString().trim();
+
+          const descricao =
+            row['Descrição'] ||
+            row['Descricao'] ||
+            row['Instruções'] ||
+            row['Observações'] ||
+            '';
 
           let isValid = true;
           let validationError = '';
@@ -221,6 +304,7 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
           }
 
           return {
+            numero_os: numero_os || undefined,
             titulo,
             tipo_operacao,
             prioridade,
@@ -233,6 +317,7 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
             categoria,
             recorrencia,
             exigencia_conclusao,
+            checklist_itens_texto,
             descricao,
             isValid,
             validationError,
@@ -384,10 +469,23 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
       };
 
       if (reqType === 'CHECKLIST') {
-        requirementObj.checklist_itens = [
-          { id: 'c1', texto: 'Verificação visual dos padrões de segurança', concluido: false },
-          { id: 'c2', texto: 'Validação e registro em checklist', concluido: false },
-        ];
+        const customItems = (row.checklist_itens_texto || '')
+          .split(';')
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        if (customItems.length > 0) {
+          requirementObj.checklist_itens = customItems.map((itemText, cIdx) => ({
+            id: `c-${cIdx + 1}`,
+            texto: itemText,
+            concluido: false,
+          }));
+        } else {
+          requirementObj.checklist_itens = [
+            { id: 'c1', texto: 'Verificação visual dos padrões operacionais', concluido: false },
+            { id: 'c2', texto: 'Validação e registro em checklist', concluido: false },
+          ];
+        }
       }
 
       // Recurrence mapping
@@ -398,6 +496,7 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
       }
 
       const created = dbStore.createTask({
+        numero_os: row.numero_os || undefined,
         titulo: row.titulo,
         tipo_operacao: row.tipo_operacao || 'Rotina Operacional',
         prioridade: row.prioridade,
@@ -598,11 +697,12 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
                   <thead className="bg-[#F8F9FA] text-gray-500 font-bold border-b border-gray-200 sticky top-0">
                     <tr>
                       <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Título da Tarefa</th>
+                      <th className="py-2.5 px-3">OS / Título da Tarefa</th>
                       <th className="py-2.5 px-3">Tipo Operação</th>
                       <th className="py-2.5 px-3">Prioridade</th>
                       <th className="py-2.5 px-3">Projeto</th>
                       <th className="py-2.5 px-3">Data</th>
+                      <th className="py-2.5 px-3">Exigência</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -623,6 +723,11 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-semibold text-[#343A40] max-w-xs truncate">
+                          {r.numero_os && (
+                            <span className="text-[10px] font-mono font-bold text-[#C76B4A] bg-[#C76B4A]/10 px-1.5 py-0.5 rounded mr-1.5">
+                              {r.numero_os}
+                            </span>
+                          )}
                           {r.titulo || '—'}
                           {r.validationError && (
                             <div className="text-[10px] text-red-600 font-normal">{r.validationError}</div>
@@ -630,12 +735,23 @@ export const TaskImportModal: React.FC<TaskImportModalProps> = ({
                         </td>
                         <td className="py-2.5 px-3 text-gray-600">{r.tipo_operacao || 'Rotina'}</td>
                         <td className="py-2.5 px-3">
-                          <span className="font-mono text-[10px] font-bold">{r.prioridade}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              r.prioridade === 'CRITICA'
+                                ? 'bg-red-100 text-red-700'
+                                : r.prioridade === 'ALTA'
+                                ? 'bg-amber-100 text-amber-800'
+                                : r.prioridade === 'MEDIA'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {r.prioridade}
+                          </span>
                         </td>
-                        <td className="py-2.5 px-3 text-gray-600 truncate max-w-[150px]">
-                          {r.projeto || 'Matriz'}
-                        </td>
-                        <td className="py-2.5 px-3 text-gray-500">{r.data}</td>
+                        <td className="py-2.5 px-3 text-gray-600 truncate max-w-[140px]">{r.projeto || 'Todos'}</td>
+                        <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">{r.data}</td>
+                        <td className="py-2.5 px-3 text-gray-600 text-[10px] font-medium">{r.exigencia_conclusao || 'CHECKLIST'}</td>
                       </tr>
                     ))}
                   </tbody>

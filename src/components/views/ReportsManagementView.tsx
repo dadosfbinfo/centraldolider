@@ -34,6 +34,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { ReportViewerModal } from '../reports/ReportViewerModal';
 import { PeriodFilter, PeriodSelection, PeriodFilterValue, isDateInPeriod } from '../common/PeriodFilter';
+import { Pagination } from '../common/Pagination';
 
 export const ReportsManagementView: React.FC = () => {
   const { user } = useAuth();
@@ -50,12 +51,15 @@ export const ReportsManagementView: React.FC = () => {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
   });
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
   const [editingReport, setEditingReport] = useState<Relatorio | null>(null);
   const [viewingReport, setViewingReport] = useState<Relatorio | null>(null);
   const [confirmationsModalReport, setConfirmationsModalReport] = useState<Relatorio | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<Relatorio | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Form states (PDF ONLY)
   const [formData, setFormData] = useState({
@@ -137,13 +141,42 @@ export const ReportsManagementView: React.FC = () => {
     setIsFormModalOpen(true);
   };
 
-  const handleTogglePublish = (id: string) => {
-    dbStore.toggleReportPublished(id);
+  const handlePublishReport = (id: string) => {
+    if (window.confirm('Deseja publicar este relatório? Uma vez publicado, ele ficará disponível permanentemente aos líderes e não poderá ser revertido para rascunho.')) {
+      dbStore.publishReport(id);
+    }
   };
 
-  const handleDeleteReport = (id: string, title: string) => {
-    if (window.confirm(`Deseja realmente excluir o relatório "${title}"?`)) {
-      dbStore.deleteReport(id);
+  const canDeleteReports = user?.role === 'ADMINISTRADOR' || user?.role === 'GERENCIA';
+
+  const handleRequestDelete = (report: Relatorio) => {
+    if (!canDeleteReports) {
+      alert('Apenas Administrador e Gerência possuem permissão para excluir relatórios.');
+      return;
+    }
+
+    const commentsCount = dbStore.getComments('RELATORIO', report.id).length;
+    const target = dbStore.getReports().find((r) => r.id === report.id);
+    const confCount = (target?.confirmacoes_leitura || []).length;
+
+    if (commentsCount > 0 || confCount > 0) {
+      alert('Este relatório não pode ser excluído porque já possui comentários ou confirmações de leitura registradas.');
+      return;
+    }
+
+    setDeleteError(null);
+    setReportToDelete(report);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!reportToDelete) return;
+    try {
+      dbStore.deleteReport(reportToDelete.id);
+      setReportToDelete(null);
+      setDeleteError(null);
+      loadData();
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Erro ao excluir relatório.');
     }
   };
 
@@ -241,6 +274,16 @@ export const ReportsManagementView: React.FC = () => {
       return matchType && matchSearch && matchPeriod && matchProject;
     });
   }, [reports, selectedType, selectedProjectId, searchTerm, period]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedType, selectedProjectId, searchTerm, period]);
+
+  const paginatedReports = useMemo(() => {
+    const start = (currentPage - 1) * 10;
+    return filteredReports.slice(start, start + 10);
+  }, [filteredReports, currentPage]);
 
   // Overall metrics
   const metrics = useMemo(() => {
@@ -404,8 +447,11 @@ export const ReportsManagementView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredReports.map((report) => {
+                paginatedReports.map((report) => {
                   const confirmations = report.confirmacoes_leitura || [];
+                  const commentsCount = dbStore.getComments('RELATORIO', report.id).length;
+                  const isDeletionBlocked = commentsCount > 0 || confirmations.length > 0;
+
                   return (
                     <tr key={report.id} className="hover:bg-stone-50/70 transition-colors">
                       <td className="px-4 py-3.5">
@@ -448,24 +494,22 @@ export const ReportsManagementView: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <button
-                          onClick={() => handleTogglePublish(report.id)}
-                          className={`px-2.5 py-1 text-xs font-bold rounded-full border inline-flex items-center gap-1 transition ${
-                            report.publicado
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-stone-100 text-stone-600 border-stone-300 hover:bg-stone-200'
-                          }`}
-                        >
-                          {report.publicado ? (
-                            <>
-                              <Eye className="w-3 h-3" /> Publicado
-                            </>
-                          ) : (
-                            <>
-                              <EyeOff className="w-3 h-3" /> Rascunho
-                            </>
-                          )}
-                        </button>
+                        {report.publicado ? (
+                          <span
+                            className="px-2.5 py-1 text-xs font-bold rounded-full border inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border-emerald-200"
+                            title="Relatório publicado permanentemente (não pode ser revertido para rascunho)"
+                          >
+                            <Eye className="w-3 h-3" /> Publicado
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handlePublishReport(report.id)}
+                            className="px-2.5 py-1 text-xs font-bold rounded-full border inline-flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 transition shadow-2xs"
+                            title="Clique para publicar permanentemente este relatório"
+                          >
+                            <EyeOff className="w-3 h-3" /> Rascunho • Publicar
+                          </button>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
@@ -495,13 +539,25 @@ export const ReportsManagementView: React.FC = () => {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteReport(report.id, report.titulo)}
-                            className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
-                            title="Excluir Relatório"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canDeleteReports && (
+                            isDeletionBlocked ? (
+                              <button
+                                disabled
+                                className="p-1.5 text-stone-300 cursor-not-allowed rounded-lg"
+                                title="Este relatório não pode ser excluído porque já possui comentários ou confirmações de leitura registradas."
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleRequestDelete(report)}
+                                className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
+                                title="Excluir Relatório"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -511,6 +567,14 @@ export const ReportsManagementView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredReports.length}
+          pageSize={10}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Form Modal (Create / Edit Report with PDF Upload ONLY) */}
@@ -777,17 +841,29 @@ export const ReportsManagementView: React.FC = () => {
               </div>
 
               {/* Publicado Checkbox */}
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="checkbox-published"
-                  checked={formData.publicado}
-                  onChange={(e) => setFormData({ ...formData, publicado: e.target.checked })}
-                  className="rounded border-stone-300 text-[#C76B4A] focus:ring-[#C76B4A]"
-                />
-                <label htmlFor="checkbox-published" className="font-bold text-stone-800 cursor-pointer text-xs">
-                  Publicar imediatamente (ficará visível para os líderes designados)
-                </label>
+              {/* Publicado Checkbox / Permanent notice */}
+              <div className="pt-2">
+                {editingReport?.publicado ? (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Relatório Publicado Permanentemente:</strong> Não é permitido reverter relatórios publicados para rascunho a fim de preservar a rastreabilidade e histórico dos líderes.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="checkbox-published"
+                      checked={formData.publicado}
+                      onChange={(e) => setFormData({ ...formData, publicado: e.target.checked })}
+                      className="rounded border-stone-300 text-[#C76B4A] focus:ring-[#C76B4A]"
+                    />
+                    <label htmlFor="checkbox-published" className="font-bold text-stone-800 cursor-pointer text-xs">
+                      Publicar imediatamente (ficará visível para os líderes designados)
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-stone-100">
@@ -839,30 +915,42 @@ export const ReportsManagementView: React.FC = () => {
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {(confirmationsModalReport.confirmacoes_leitura || []).length === 0 ? (
                 <div className="p-8 text-center text-stone-400 text-xs">
-                  Nenhum líder confirmou a leitura deste relatório ainda.
+                  Nenhuma confirmação de leitura registrada para este relatório ainda.
                 </div>
               ) : (
-                (confirmationsModalReport.confirmacoes_leitura || []).map((c, i) => (
-                  <div
-                    key={i}
-                    className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between gap-3 text-xs"
-                  >
-                    <div>
-                      <strong className="text-stone-900 block">{c.usuario_nome}</strong>
-                      <span className="text-[11px] text-stone-600">
-                        {c.usuario_cargo || 'Líder'} {c.unidade_nome ? `• ${c.unidade_nome}` : ''}
-                      </span>
+                (confirmationsModalReport.confirmacoes_leitura || []).map((c, i) => {
+                  const rawDate = c.data_hora || (c as any).data_confirmacao;
+                  const dateObj = rawDate ? new Date(rawDate) : null;
+                  const isValid = dateObj && !isNaN(dateObj.getTime());
+                  const formattedDate = isValid
+                    ? dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                    : 'Data não informada';
+                  const formattedTime = isValid
+                    ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : '';
+
+                  return (
+                    <div
+                      key={i}
+                      className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <strong className="text-stone-900 block">{c.usuario_nome}</strong>
+                        <span className="text-[11px] text-stone-600">
+                          {c.usuario_cargo || ((c as any).usuario_role === 'ADMINISTRADOR' ? 'Administrador' : (c as any).usuario_role === 'GERENCIA' ? 'Gerência' : 'Líder')} {c.unidade_nome ? `• ${c.unidade_nome}` : ''}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 block">
+                          Confirmado em
+                        </span>
+                        <span className="text-[11px] font-bold text-stone-800 mt-0.5 block">
+                          {formattedDate} {formattedTime ? `às ${formattedTime}` : ''}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[11px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 block">
-                        Confirmado em
-                      </span>
-                      <span className="text-[10px] text-stone-600 mt-0.5 block">
-                        {new Date(c.data_confirmacao).toLocaleString('pt-BR')}
-                      </span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -885,6 +973,72 @@ export const ReportsManagementView: React.FC = () => {
         currentUser={user}
         onClose={() => setViewingReport(null)}
       />
+
+      {/* Delete Confirmation Modal */}
+      {reportToDelete && (
+        <div
+          id="delete-report-modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+        >
+          <div
+            id="delete-report-modal"
+            className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-stone-200 space-y-5"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-stone-900">Excluir Relatório</h3>
+                <p className="text-xs text-stone-500">Confirmação de exclusão permanente</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200/80 text-xs text-stone-700 space-y-1.5">
+              <div className="font-bold text-stone-900 text-sm">{reportToDelete.titulo}</div>
+              <div className="text-stone-500">
+                Tipo: <span className="font-semibold text-stone-700">{reportToDelete.tipo}</span> • Ref: {reportToDelete.periodo}
+              </div>
+              <div className="text-[11px] text-stone-400 mt-1">
+                Arquivo: {reportToDelete.arquivo_pdf_nome || 'Documento PDF'}
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-600 leading-relaxed">
+              Tem certeza que deseja excluir este relatório? Ele não possui comentários nem confirmações de leitura e será removido permanentemente do sistema.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-delete-report"
+                onClick={() => {
+                  setReportToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-100 font-bold text-xs transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-report"
+                onClick={handleConfirmDelete}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

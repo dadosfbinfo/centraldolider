@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home,
   CheckSquare,
@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useAuth, NavigationTab } from '../../context/AuthContext';
+import { dbStore } from '../../services/dbStore';
 
 interface SidebarProps {
   isOpenMobile: boolean;
@@ -29,12 +30,66 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpenMobile, onCloseMobile })
   const isGerencia = currentUser?.role === 'GERENCIA';
   const hasManagementAccess = isAdmin || isGerencia;
 
+  const [activeTasksCount, setActiveTasksCount] = useState<number>(0);
+  const [todayEventsCount, setTodayEventsCount] = useState<number>(0);
+  const [unreadReportsCount, setUnreadReportsCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const calculateCounters = () => {
+      // 1. Minhas Tarefas counter (EM_ANDAMENTO + ATRASADA)
+      const userTasks = dbStore.getTasksForUser(currentUser.id, currentUser.role, currentUser.unidade_id);
+      const count = userTasks.filter(
+        (t) => t.status === 'EM_ANDAMENTO' || t.status === 'ATRASADA'
+      ).length;
+      setActiveTasksCount(count);
+
+      // 2. Calendário counter (Leader area only for role === 'LIDER')
+      if (currentUser.role === 'LIDER') {
+        const now = new Date();
+        const todayFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const userEvents = dbStore.getEventsForUser(currentUser.id, currentUser.role, currentUser.unidade_id);
+        const eventCount = userEvents.filter((e) => e.data === todayFormatted).length;
+        setTodayEventsCount(eventCount);
+
+        // 3. Relatórios counter (Leader area only for role === 'LIDER')
+        const userReports = dbStore.getReportsForUser(currentUser);
+        const unreadCount = userReports.filter(
+          (r) => !r.confirmacoes_leitura?.some((c) => c.usuario_id === currentUser.id)
+        ).length;
+        setUnreadReportsCount(unreadCount);
+      } else {
+        setTodayEventsCount(0);
+        setUnreadReportsCount(0);
+      }
+    };
+
+    calculateCounters();
+    const unsub = dbStore.subscribe(calculateCounters);
+    return () => unsub();
+  }, [currentUser]);
+
   const leaderNavItems: { id: NavigationTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'inicio', label: 'Início', icon: <Home className="w-4 h-4" /> },
-    { id: 'minhas-tarefas', label: 'Minhas Tarefas', icon: <CheckSquare className="w-4 h-4" />, badge: '2' },
+    {
+      id: 'minhas-tarefas',
+      label: 'Minhas Tarefas',
+      icon: <CheckSquare className="w-4 h-4" />,
+      badge: activeTasksCount > 0 ? String(activeTasksCount) : undefined
+    },
     { id: 'minhas-metas', label: 'Minhas Metas', icon: <Target className="w-4 h-4" /> },
-    { id: 'calendario', label: 'Calendário', icon: <Calendar className="w-4 h-4" /> },
-    { id: 'relatorios', label: 'Relatórios', icon: <FileText className="w-4 h-4" />, badge: 'Novo' },
+    {
+      id: 'calendario',
+      label: 'Calendário',
+      icon: <Calendar className="w-4 h-4" />,
+      badge: currentUser?.role === 'LIDER' && todayEventsCount > 0 ? String(todayEventsCount) : undefined
+    },
+    {
+      id: 'relatorios',
+      label: 'Relatórios',
+      icon: <FileText className="w-4 h-4" />,
+      badge: currentUser?.role === 'LIDER' && unreadReportsCount > 0 ? String(unreadReportsCount) : undefined
+    },
     { id: 'meu-perfil', label: 'Meu Perfil', icon: <User className="w-4 h-4" /> },
   ];
 

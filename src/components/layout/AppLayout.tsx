@@ -18,7 +18,7 @@ import { DatabaseSchemaModal } from '../views/DatabaseSchemaModal';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
-  const { activeTab, currentUser, setActiveTab } = useAuth();
+  const { activeTab, currentUser, setActiveTab, taskSubTab } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [schemaModalOpen, setSchemaModalOpen] = useState(false);
 
@@ -57,7 +57,7 @@ export const AppLayout: React.FC = () => {
         return <DashboardHome />;
       case 'minhas-tarefas':
       case 'admin-tarefas':
-        return <TasksView initialTab="hoje" />;
+        return <TasksView initialTab={taskSubTab} />;
       case 'minhas-metas':
         return <LeaderGoalsView />;
       case 'admin-metas':
