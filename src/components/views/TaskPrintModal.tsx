@@ -168,7 +168,8 @@ export const TaskPrintModal: React.FC<TaskPrintModalProps> = ({ isOpen, onClose,
             </div>
             <div className="p-4 space-y-4">
               {task.requisitos_conclusao?.map((req, idx) => {
-                const submetido = task.evidencias?.find((e) => e.requisito_id === req.id);
+                const submetido = task.evidencias?.find((e) => e.requisito_id === req.id) ||
+                  task.evidencias_submetidas?.find((e) => e.requisito_id === req.id);
 
                 return (
                   <div key={req.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
@@ -208,22 +209,93 @@ export const TaskPrintModal: React.FC<TaskPrintModalProps> = ({ isOpen, onClose,
                       </div>
                     )}
 
-                    {req.tipo === 'FOTO' && (
-                      <div className="p-2 bg-gray-50 rounded text-gray-700 flex items-center gap-4">
-                        {submetido?.foto_url ? (
-                          <>
-                            <img
-                              src={submetido.foto_url}
-                              alt="Comprovante"
-                              className="w-24 h-16 object-cover rounded border"
-                              referrerPolicy="no-referrer"
-                            />
-                            <span className="text-emerald-700 font-semibold text-xs">
-                              ✓ Foto anexada e validada no sistema
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-gray-400 italic">Nenhum registro fotográfico anexado</span>
+                    {req.tipo === 'FOTO' && (() => {
+                      const photos = submetido?.fotos && submetido.fotos.length > 0
+                        ? submetido.fotos
+                        : submetido?.foto_url ? [submetido.foto_url] : [];
+
+                      return (
+                        <div className="p-2 bg-gray-50 rounded text-gray-700 space-y-2">
+                          {photos.length > 0 ? (
+                            <>
+                              <div className="flex flex-wrap gap-2">
+                                {photos.map((p, pI) => (
+                                  <img
+                                    key={pI}
+                                    src={p}
+                                    alt={`Foto ${pI + 1}`}
+                                    className="w-24 h-18 object-cover rounded border border-gray-300"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-emerald-700 font-semibold text-xs block">
+                                ✓ {photos.length} foto(s) anexada(s) e validada(s) no sistema
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-gray-400 italic">Nenhum registro fotográfico anexado</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {req.tipo === 'ARQUIVO' && (() => {
+                      const files = submetido?.arquivos && submetido.arquivos.length > 0
+                        ? submetido.arquivos
+                        : submetido?.arquivo_url ? [{ id: '1', nome: submetido.arquivo_url, url: submetido.arquivo_url }] : [];
+
+                      return (
+                        <div className="p-2 bg-gray-50 rounded text-gray-700 space-y-1">
+                          {files.length > 0 ? (
+                            <ul className="list-disc pl-4 space-y-1">
+                              {files.map((f, fI) => (
+                                <li key={fI} className="text-xs">
+                                  <strong>{f.nome}</strong> {f.tamanho ? `(${f.tamanho})` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-gray-400 italic">Nenhum documento ou laudo anexado</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {req.tipo === 'FORMULARIO' && (() => {
+                      const auditorias = submetido?.auditorias || [];
+                      return (
+                        <div className="p-2 bg-gray-50 rounded text-gray-700 space-y-2">
+                          {auditorias.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {auditorias.map((a, aI) => {
+                                const tot = a.total_auditado || 0;
+                                const nc = a.total_nao_conformidades || 0;
+                                const conf = tot > 0 ? Math.max(0, Math.round(((tot - nc) / tot) * 100)) : 100;
+                                return (
+                                  <div key={aI} className="flex items-center justify-between text-xs border-b border-gray-200 pb-1">
+                                    <span><strong>{a.nome_auditoria || a.tipo_id}:</strong> Auditados: {tot} | Não Conf.: {nc}</span>
+                                    <span className="font-bold text-emerald-700">{conf}% Conforme</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          {submetido?.relatorio_auditoria && (
+                            <div className="text-xs italic bg-white p-2 rounded border border-gray-200">
+                              <strong>Relatório / Parecer:</strong> "{submetido.relatorio_auditoria}"
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {req.tipo === 'SIMPLES' && (
+                      <div className="p-2 bg-gray-50 rounded text-gray-700 text-xs">
+                        <strong>Confirmação de Execução:</strong>{' '}
+                        <span className="font-bold">{submetido?.confirmacao_execucao || submetido?.texto_resposta || 'Não informado'}</span>
+                        {submetido?.confirmacao_detalhe && (
+                          <div className="mt-1 italic">"{submetido.confirmacao_detalhe}"</div>
                         )}
                       </div>
                     )}

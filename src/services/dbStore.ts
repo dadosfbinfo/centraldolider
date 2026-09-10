@@ -17,6 +17,7 @@ import {
   ConfirmationStatus,
   EvidenciaSubmetida,
   AprovacaoValidador,
+  TipoAuditoriaConfig,
 } from '../types/database';
 
 const STORAGE_KEYS = {
@@ -29,6 +30,7 @@ const STORAGE_KEYS = {
   REPORTS: 'cdl_relatorios_v3',
   EVENTS: 'cdl_calendario_eventos_v1',
   CALENDAR_TYPES: 'cdl_calendar_types_v1',
+  AUDIT_TYPES: 'cdl_audit_types_v1',
   COMMENTS: 'cdl_comentarios_v1',
   NOTIFICATIONS: 'cdl_notificacoes_v1',
   SIMULATED_EMAILS: 'cdl_simulated_emails_v1',
@@ -36,6 +38,14 @@ const STORAGE_KEYS = {
 };
 
 // Initial Seed Data
+const INITIAL_AUDIT_TYPES: TipoAuditoriaConfig[] = [
+  { id: 'PRODUCAO', nome: 'Produção', descricao: 'Processos e rotinas de linha de produção', is_default: true },
+  { id: 'EPIS', nome: 'EPIs', descricao: 'Equipamentos de Proteção Individual e segurança', is_default: true },
+  { id: 'QUALIDADE', nome: 'Qualidade', descricao: 'Padrões técnicos e conformidade do produto', is_default: true },
+  { id: '5S_ORGANIZACAO', nome: '5S / Organização', descricao: 'Limpeza, organização e conservação', is_default: true },
+  { id: 'SEGURANCA_OPERACIONAL', nome: 'Segurança Operacional', descricao: 'Procedimentos seguros e prevenção de riscos', is_default: true },
+];
+
 const INITIAL_UNITS: Unidade[] = [
   { id: 'unit-sp-01', nome: 'Unidade São Paulo - Matriz Pinheiros', regional: 'Sudeste 1', codigo: 'UN-SP01', cidade: 'São Paulo', estado: 'SP', endereco: 'Av. Brigadeiro Faria Lima, 1485', responsavel_nome: 'Mariana Costa', status: 'ATIVA', created_at: '2026-08-01T08:00:00Z' },
   { id: 'unit-rj-01', nome: 'Unidade Rio de Janeiro - Barra da Tijuca', regional: 'Sudeste 2', codigo: 'UN-RJ01', cidade: 'Rio de Janeiro', estado: 'RJ', endereco: 'Av. das Américas, 3500', responsavel_nome: 'Roberto Almeida', status: 'ATIVA', created_at: '2026-08-01T08:00:00Z' },
@@ -1339,6 +1349,9 @@ class DatabaseStore {
       if (!localStorage.getItem(STORAGE_KEYS.CALENDAR_TYPES)) {
         localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
       }
+      if (!localStorage.getItem(STORAGE_KEYS.AUDIT_TYPES)) {
+        localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
+      }
 
       // Sync test users & passwords if missing
       const currentUsers = this.getUsers();
@@ -1399,6 +1412,7 @@ class DatabaseStore {
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(INITIAL_REPORTS));
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(INITIAL_EVENTS));
     localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
+    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
     localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
     localStorage.setItem(STORAGE_KEYS.SIMULATED_EMAILS, JSON.stringify(INITIAL_SIMULATED_EMAILS));
@@ -3195,6 +3209,72 @@ class DatabaseStore {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
     }
 
+    this.emitChange();
+  }
+
+  // --- TIPOS DE AUDITORIA (QUESTIONÁRIO DE AUDITORIA) ---
+  public getAuditTypes(): TipoAuditoriaConfig[] {
+    const data = localStorage.getItem(STORAGE_KEYS.AUDIT_TYPES);
+    if (data === null) {
+      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
+      return INITIAL_AUDIT_TYPES;
+    }
+    try {
+      const types: TipoAuditoriaConfig[] = JSON.parse(data);
+      if (Array.isArray(types) && types.length > 0) {
+        return types;
+      }
+      return INITIAL_AUDIT_TYPES;
+    } catch {
+      return INITIAL_AUDIT_TYPES;
+    }
+  }
+
+  public createAuditType(data: Omit<TipoAuditoriaConfig, 'id'>): TipoAuditoriaConfig {
+    const types = this.getAuditTypes();
+    const id = data.nome
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]/g, '_') + '_' + Date.now().toString(36);
+
+    const newType: TipoAuditoriaConfig = {
+      ...data,
+      id,
+      is_default: false,
+    };
+    types.push(newType);
+    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(types));
+    this.emitChange();
+    return newType;
+  }
+
+  public updateAuditType(id: string, data: Partial<TipoAuditoriaConfig>): TipoAuditoriaConfig {
+    const types = this.getAuditTypes();
+    const idx = types.findIndex((t) => t.id === id);
+    if (idx === -1) throw new Error('Tipo de auditoria não encontrado.');
+
+    types[idx] = { ...types[idx], ...data };
+    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(types));
+    this.emitChange();
+    return types[idx];
+  }
+
+  public deleteAuditType(id: string): void {
+    const currentTypes = this.getAuditTypes();
+    const filtered = currentTypes.filter((t) => t.id !== id);
+    if (filtered.length === 0) {
+      const fallback: TipoAuditoriaConfig = {
+        id: 'PRODUCAO',
+        nome: 'Produção',
+        descricao: 'Processos e rotinas de linha de produção',
+        is_default: true,
+      };
+      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify([fallback]));
+    } else {
+      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(filtered));
+    }
     this.emitChange();
   }
 
