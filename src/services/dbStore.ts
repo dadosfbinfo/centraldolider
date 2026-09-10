@@ -1331,25 +1331,9 @@ class DatabaseStore {
   }
 
   private init() {
-    try {
-      if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
-        this.resetToDefaults();
-        return;
-      }
-
-      // Check and seed all individual collections if missing or uninitialized
-      if (!localStorage.getItem(STORAGE_KEYS.LEADERS)) {
-        localStorage.setItem(STORAGE_KEYS.LEADERS, JSON.stringify(INITIAL_LEADERS));
-      }
-      if (!localStorage.getItem(STORAGE_KEYS.UNITS)) {
-        localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(INITIAL_UNITS));
-      }
-      if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(INITIAL_CATEGORIES));
-      }
-      if (!localStorage.getItem(STORAGE_KEYS.TASKS)) {
-        localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-      }
+    if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
+      this.resetToDefaults();
+    } else {
       if (!localStorage.getItem(STORAGE_KEYS.GOALS)) {
         localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(INITIAL_GOALS));
       }
@@ -1367,12 +1351,6 @@ class DatabaseStore {
       }
       if (!localStorage.getItem(STORAGE_KEYS.AUDIT_TYPES)) {
         localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
-      }
-      if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) {
-        localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
-      }
-      if (!localStorage.getItem(STORAGE_KEYS.SIMULATED_EMAILS)) {
-        localStorage.setItem(STORAGE_KEYS.SIMULATED_EMAILS, JSON.stringify(INITIAL_SIMULATED_EMAILS));
       }
 
       // Sync test users & passwords if missing
@@ -1400,31 +1378,15 @@ class DatabaseStore {
         localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
       }
 
-      // Sync initial units/leaders/categories if array is empty
-      const units = this.getUnits();
-      if (units.length === 0) {
-        localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(INITIAL_UNITS));
-      }
-      const leaders = this.getLeaders();
-      if (leaders.length === 0) {
-        localStorage.setItem(STORAGE_KEYS.LEADERS, JSON.stringify(INITIAL_LEADERS));
-      }
-      const categories = this.getCategories();
-      if (categories.length === 0) {
-        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(INITIAL_CATEGORIES));
-      }
-      const tasks = this.getTasks();
-      if (tasks.length === 0) {
-        localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-      } else if (!tasks.some((t) => t.id === 'os-108')) {
+      // Sync os-108 if missing
+      const currentTasks = this.getTasks();
+      if (!currentTasks.some((t) => t.id === 'os-108')) {
         const init108 = INITIAL_TASKS.find((t) => t.id === 'os-108');
         if (init108) {
-          tasks.push(init108);
-          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+          currentTasks.push(init108);
+          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(currentTasks));
         }
       }
-    } catch (e) {
-      console.warn('LocalStorage init warning:', e);
     }
   }
 

@@ -47,18 +47,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenDatabaseSchema }) =>
     }
   };
 
-  const handleQuickLogin = async (demoEmail: string, demoPass: string) => {
+  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
     setEmail(demoEmail);
     setPassword(demoPass);
     setErrorMessage(null);
-    setLoading(true);
-    try {
-      await login(demoEmail, demoPass);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao efetuar login rápido.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   return (
@@ -137,47 +129,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenDatabaseSchema }) =>
             {/* Bottom Quick Switch for Evaluator */}
             <div className="relative z-10 pt-6 mt-6 border-t border-white/15">
               <p className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2.5">
-                Acesso Rápido com 1 Clique (Demonstração):
+                Acesso Rápido para Avaliação:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <button
                   type="button"
-                  disabled={loading}
                   onClick={() => handleQuickLogin('admin@centraldolider.com.br', 'Admin@123')}
-                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white disabled:opacity-50"
+                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white"
                 >
-                  <span className="font-bold text-white block">👑 Administrador Geral</span>
-                  <span className="text-[10px] text-gray-300 truncate block">Acesso total e gestão</span>
+                  <span className="font-bold text-white block">👑 Administrador</span>
+                  <span className="text-[11px] text-gray-300 truncate block">admin@centraldolider.com.br</span>
                 </button>
 
                 <button
                   type="button"
-                  disabled={loading}
-                  onClick={() => handleQuickLogin('gerencia.teste@centraldolider.com.br', 'Gerencia@123')}
-                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white disabled:opacity-50"
-                >
-                  <span className="font-bold text-white block">🛡️ Gerência Regional</span>
-                  <span className="text-[10px] text-gray-300 truncate block">Validação & auditoria OS</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
                   onClick={() => handleQuickLogin('mariana.costa@centraldolider.com.br', 'Lider@123')}
-                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white disabled:opacity-50"
+                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white"
                 >
                   <span className="font-bold text-white block">👔 Líder (SP Pinheiros)</span>
-                  <span className="text-[10px] text-gray-300 truncate block">Execução de OS & Metas</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleQuickLogin('lider.teste@centraldolider.com.br', 'Lider@123')}
-                  className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-left transition border border-white/10 text-gray-200 hover:text-white disabled:opacity-50"
-                >
-                  <span className="font-bold text-white block">👔 Líder (Curitiba)</span>
-                  <span className="text-[10px] text-gray-300 truncate block">Operação e rotinas</span>
+                  <span className="text-[11px] text-gray-300 truncate block">mariana.costa@...</span>
                 </button>
               </div>
             </div>

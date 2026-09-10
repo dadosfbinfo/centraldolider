@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Database, 
   Copy, 
@@ -8,15 +8,13 @@ import {
   ShieldCheck, 
   FileCode, 
   FileSpreadsheet,
-  Activity,
   Terminal,
+  Layers,
   Sparkles,
   ExternalLink,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw
+  CheckCircle2
 } from 'lucide-react';
-import { SUPABASE_SQL_SCHEMA, isSupabaseConfigured, checkSupabaseConnection, SupabaseConnectionStatus } from '../../lib/supabase';
+import { SUPABASE_SQL_SCHEMA, isSupabaseConfigured } from '../../lib/supabase';
 
 interface DatabaseSchemaModalProps {
   isOpen: boolean;
@@ -25,33 +23,8 @@ interface DatabaseSchemaModalProps {
 
 export const DatabaseSchemaModal: React.FC<DatabaseSchemaModalProps> = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [activeSection, setActiveSection] = useState<'tables' | 'queries' | 'sql' | 'rls' | 'status'>('tables');
+  const [activeSection, setActiveSection] = useState<'tables' | 'queries' | 'sql' | 'rls'>('tables');
   const [copiedQueryIndex, setCopiedQueryIndex] = useState<number | null>(null);
-  const [connStatus, setConnStatus] = useState<SupabaseConnectionStatus | null>(null);
-  const [isTestingConn, setIsTestingConn] = useState(false);
-
-  const runConnectionTest = async () => {
-    setIsTestingConn(true);
-    try {
-      const res = await checkSupabaseConnection();
-      setConnStatus(res);
-    } catch (err: any) {
-      setConnStatus({
-        isConfigured: false,
-        url: 'Erro ao verificar',
-        connected: false,
-        message: err?.message || 'Falha ao executar teste',
-      });
-    } finally {
-      setIsTestingConn(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen && activeSection === 'status' && !connStatus) {
-      runConnectionTest();
-    }
-  }, [isOpen, activeSection]);
 
   if (!isOpen) return null;
 
@@ -316,20 +289,6 @@ ORDER BY total_os DESC;`,
             >
               <ShieldCheck className="w-4 h-4" /> Segurança (RLS)
             </button>
-
-            <button
-              onClick={() => {
-                setActiveSection('status');
-                runConnectionTest();
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                activeSection === 'status'
-                  ? 'bg-white text-[#C76B4A] shadow-xs border border-gray-200'
-                  : 'text-gray-600 hover:text-[#343A40]'
-              }`}
-            >
-              <Activity className="w-4 h-4" /> Status da Conexão
-            </button>
           </div>
 
           <button
@@ -486,93 +445,6 @@ ORDER BY total_os DESC;`,
                     <li>• Registro de apontamentos de metas diárias/semanais</li>
                     <li>• Inserção de comentários com autor_id próprio</li>
                   </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeSection === 'status' && (
-            <div className="space-y-6 max-w-3xl">
-              {/* Status Header Banner */}
-              <div className={`p-5 rounded-2xl border ${
-                connStatus?.connected 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-                  : isSupabaseConfigured
-                    ? 'bg-amber-50 border-amber-200 text-amber-900'
-                    : 'bg-blue-50 border-blue-200 text-blue-900'
-              }`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    {connStatus?.connected ? (
-                      <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : isSupabaseConfigured ? (
-                      <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <Database className="w-6 h-6 text-blue-600 shrink-0 mt-0.5" />
-                    )}
-                    <div>
-                      <h4 className="font-bold text-sm">
-                        {connStatus?.connected 
-                          ? 'Conexão Supabase Ativa e Operante' 
-                          : isSupabaseConfigured 
-                            ? 'Credenciais Fornecidas - Verificando Acesso' 
-                            : 'Modo Local / Armazenamento Seguro Ativo'}
-                      </h4>
-                      <p className="text-xs mt-1 leading-relaxed opacity-90">
-                        {connStatus ? connStatus.message : 'Clique no botão abaixo para testar a comunicação com o projeto Supabase.'}
-                      </p>
-                      {connStatus?.latencyMs !== undefined && (
-                        <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white/80 border border-current/20">
-                          <span>Latência de resposta:</span>
-                          <strong>{connStatus.latencyMs}ms</strong>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={runConnectionTest}
-                    disabled={isTestingConn}
-                    className="px-3.5 py-2 rounded-xl bg-white border border-gray-300 text-gray-800 text-xs font-bold hover:bg-gray-50 transition flex items-center gap-2 shadow-xs shrink-0 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingConn ? 'animate-spin' : ''}`} />
-                    {isTestingConn ? 'Testando...' : 'Re-testar Conexão'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Environment Variables & Config Diagnostics */}
-              <div className="p-5 rounded-2xl bg-white border border-gray-200 space-y-4 shadow-xs">
-                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-[#C76B4A]" /> Diagnóstico das Variáveis de Ambiente
-                </h4>
-
-                <div className="space-y-3 font-mono text-xs">
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <span className="text-gray-600 font-semibold">VITE_SUPABASE_URL</span>
-                    <span className="text-gray-900 bg-white px-2 py-1 rounded border border-gray-200 truncate max-w-md">
-                      {isSupabaseConfigured 
-                        ? (import.meta as any).env?.VITE_SUPABASE_URL || 'Configurado' 
-                        : 'Não configurado (ou valor padrão / template)'}
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <span className="text-gray-600 font-semibold">VITE_SUPABASE_ANON_KEY</span>
-                    <span className="text-gray-900 bg-white px-2 py-1 rounded border border-gray-200">
-                      {isSupabaseConfigured ? '•••••••••••••••••••• (Presente)' : 'Não configurado'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="text-xs text-gray-600 space-y-2 pt-2 border-t border-gray-100">
-                  <p className="font-semibold text-gray-800">Como conectar o seu Supabase:</p>
-                  <ol className="list-decimal pl-4 space-y-1">
-                    <li>Acesse seu projeto no painel do <strong className="text-gray-800">Supabase</strong>.</li>
-                    <li>Vá em <strong className="text-gray-800">Project Settings &gt; API</strong> e copie a <strong className="text-gray-800">Project URL</strong> e a chave <strong className="text-gray-800">anon public</strong>.</li>
-                    <li>No painel do projeto / variáveis de ambiente, adicione <code className="bg-gray-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_URL</code> e <code className="bg-gray-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_ANON_KEY</code>.</li>
-                    <li>Copie o script completo da aba <strong className="text-gray-800">Script SQL DDL Completo</strong> e execute no <strong className="text-gray-800">SQL Editor</strong> do Supabase para criar as tabelas, funções, triggers e políticas RLS.</li>
-                  </ol>
                 </div>
               </div>
             </div>
