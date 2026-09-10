@@ -11,7 +11,7 @@ import {
   Categoria,
   Lider,
   UsuarioPerfil,
-  TipoAuditoriaConfig
+  TipoAuditoria,
 } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
 import { useAuth } from '../../context/AuthContext';
@@ -89,8 +89,8 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   // Quick state for adding a new requirement item
   const [selectedReqType, setSelectedReqType] = useState<TaskEvidenceType>('CHECKLIST');
   const [newChecklistItemTexts, setNewChecklistItemTexts] = useState<Record<string, string>>({});
-  const [auditTypes, setAuditTypes] = useState<TipoAuditoriaConfig[]>([]);
-  const [newAuditTypeName, setNewAuditTypeName] = useState('');
+  const [availableAuditTypes, setAvailableAuditTypes] = useState<TipoAuditoria[]>(() => dbStore.getAuditTypes());
+  const [newAuditTypeName, setNewAuditTypeName] = useState<Record<string, string>>({});
 
   // Error handling
   const [errorMessage, setErrorMessage] = useState('');
@@ -102,7 +102,6 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       const cList = dbStore.getCategories();
       let lList = dbStore.getLeaders();
       const vList = dbStore.getUsers().filter((u) => u.role === 'ADMINISTRADOR' || u.role === 'GERENCIA');
-      const aTypes = dbStore.getAuditTypes();
 
       if (currentUser?.role === 'GERENCIA') {
         const managedProjectIds = dbStore.getManagedProjectIds(currentUser.id);
@@ -118,7 +117,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       setCategories(cList);
       setLeaders(lList);
       setValidatorUsers(vList);
-      setAuditTypes(aTypes);
+      setAvailableAuditTypes(dbStore.getAuditTypes());
 
       if (taskToEdit) {
         setTitulo(taskToEdit.titulo);
@@ -144,24 +143,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         setPrazo(taskToEdit.prazo || '');
         setRecorrencia(taskToEdit.recorrencia || 'UMA_VEZ');
         setDiasSemana(taskToEdit.recorrencia_config?.dias_semana || [1, 2, 3, 4, 5]);
-        
-        // Normalize FORMULARIO requirements so audit types are ready
-        const normalizedReqs = (taskToEdit.requisitos_conclusao ? [...taskToEdit.requisitos_conclusao] : []).map((req) => {
-          if (req.tipo === 'FORMULARIO') {
-            const hasTypes = req.tipos_auditoria && req.tipos_auditoria.length > 0;
-            if (!hasTypes) {
-              const defTypes = aTypes.slice(0, 2).map((a) => a.id);
-              const defItens = aTypes.slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
-              return {
-                ...req,
-                tipos_auditoria: defTypes,
-                itens_auditoria: defItens,
-              };
-            }
-          }
-          return req;
-        });
-        setRequisitos(normalizedReqs);
+        setRequisitos(taskToEdit.requisitos_conclusao ? [...taskToEdit.requisitos_conclusao] : []);
         setAnexoPdfNome(taskToEdit.anexo_pdf_nome || '');
         setAnexoPdfUrl(taskToEdit.anexo_pdf_url || '');
         setAnexoPdfTamanho(taskToEdit.anexo_pdf_tamanho || '');
@@ -304,7 +286,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           id: newId,
           tipo: 'FOTO',
           titulo: 'Evidência Fotográfica Obrigatória',
-          instrucoes: 'Anexe fotos comprobatórias do resultado (JPG ou PNG, até 15 fotos)',
+          instrucoes: 'Anexe fotos comprobatórias em formato JPG, JPEG ou PNG (máximo 15 fotos)',
           obrigatorio: true,
         };
         break;
@@ -313,7 +295,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           id: newId,
           tipo: 'ARQUIVO',
           titulo: 'Documento / Laudo Anexo (PDF/DOC)',
-          instrucoes: 'Faça upload de comprovantes ou laudos técnicos (PDF ou DOC/DOCX, até 15 arquivos)',
+          instrucoes: 'Anexe documentos comprobatórios nos formatos PDF, DOC ou DOCX (máximo 15 arquivos)',
           obrigatorio: true,
         };
         break;
@@ -327,17 +309,17 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         };
         break;
       case 'FORMULARIO': {
-        const aTypes = dbStore.getAuditTypes();
-        const defaultSelected = aTypes.slice(0, 2).map((a) => a.id);
-        const defaultItens = aTypes.slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
+        const currentAuditTypes = dbStore.getAuditTypes();
+        const selectedAuditNames = currentAuditTypes.length > 0
+          ? currentAuditTypes.map((a) => a.nome)
+          : ['Produção', 'EPIs', 'Qualidade', 'Segurança'];
         newReq = {
           id: newId,
           tipo: 'FORMULARIO',
           titulo: 'Questionário de Auditoria',
-          instrucoes: 'Preencha o total auditado e total de não conformidades para cada tipo',
+          instrucoes: 'Informe o Total Auditado e Total de Não Conformidades por tipo de auditoria avaliado',
           obrigatorio: true,
-          tipos_auditoria: defaultSelected,
-          itens_auditoria: defaultItens,
+          tipos_auditoria: selectedAuditNames,
         };
         break;
       }
@@ -347,7 +329,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           id: newId,
           tipo: 'SIMPLES',
           titulo: 'Confirmação de Execução',
-          instrucoes: 'Confirme se a execução foi realizada conforme o escopo (Sim, Não ou Outros)',
+          instrucoes: 'Selecione Sim, Não ou Outros (obrigatório descrever em caso de Outros)',
           obrigatorio: true,
         };
         break;
@@ -356,47 +338,47 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     setRequisitos([...requisitos, newReq]);
   };
 
-  // Toggle Audit Type in requirement
-  const handleToggleReqAuditType = (reqId: string, typeId: string, typeName: string) => {
+  const handleToggleAuditTypeForReq = (reqId: string, auditName: string) => {
     setRequisitos(
       requisitos.map((r) => {
         if (r.id === reqId) {
           const current = r.tipos_auditoria || [];
-          const currentItens = r.itens_auditoria || [];
-          let updatedTypes: string[];
-          let updatedItens: { tipo_id: string; nome: string }[];
-          if (current.includes(typeId)) {
-            updatedTypes = current.filter((id) => id !== typeId);
-            updatedItens = currentItens.filter((item) => item.tipo_id !== typeId);
-          } else {
-            updatedTypes = [...current, typeId];
-            updatedItens = [...currentItens, { tipo_id: typeId, nome: typeName }];
-          }
-          return {
-            ...r,
-            tipos_auditoria: updatedTypes,
-            itens_auditoria: updatedItens,
-          };
+          const next = current.includes(auditName)
+            ? current.filter((t) => t !== auditName)
+            : [...current, auditName];
+          return { ...r, tipos_auditoria: next };
         }
         return r;
       })
     );
   };
 
-  const handleCreateNewAuditType = (reqId?: string) => {
-    const trimmed = newAuditTypeName.trim();
-    if (!trimmed) return;
-    try {
-      const created = dbStore.createAuditType({ nome: trimmed });
-      const updatedList = dbStore.getAuditTypes();
-      setAuditTypes(updatedList);
-      setNewAuditTypeName('');
-      if (reqId) {
-        handleToggleReqAuditType(reqId, created.id, created.nome);
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao cadastrar tipo de auditoria.');
-    }
+  const handleCreateAndAddAuditType = (reqId: string) => {
+    const name = (newAuditTypeName[reqId] || '').trim();
+    if (!name) return;
+    const created = dbStore.createAuditType(name);
+    setAvailableAuditTypes(dbStore.getAuditTypes());
+    setNewAuditTypeName((prev) => ({ ...prev, [reqId]: '' }));
+    setRequisitos(
+      requisitos.map((r) => {
+        if (r.id === reqId) {
+          const current = r.tipos_auditoria || [];
+          return { ...r, tipos_auditoria: [...current, created.nome] };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleDeleteAuditType = (id: string, name: string) => {
+    dbStore.deleteAuditType(id);
+    setAvailableAuditTypes(dbStore.getAuditTypes());
+    setRequisitos(
+      requisitos.map((r) => ({
+        ...r,
+        tipos_auditoria: r.tipos_auditoria?.filter((t) => t !== name),
+      }))
+    );
   };
 
   const handleRemoveRequirement = (id: string) => {
@@ -1324,58 +1306,87 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                     )}
 
                     {req.tipo === 'FORMULARIO' && (
-                      <div className="space-y-2.5 pt-1 text-xs">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-gray-700">
-                            Tipos de Auditoria Designados ({req.tipos_auditoria?.length || 0} selecionados):
-                          </label>
-                          <span className="text-[10px] text-gray-500">
-                            Clique para selecionar quais auditorias o Líder deve responder
-                          </span>
+                      <div className="pl-4 sm:pl-6 space-y-3 border-l-2 border-[#355C7D]/30 pt-1">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-[#355C7D] flex items-center gap-1.5">
+                              <span>Tipos de Auditoria Avaliados nesta OS:</span>
+                            </label>
+                            <span className="text-[10px] text-gray-500 font-medium">
+                              Selecione um ou mais tipos
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            O Líder preencherá "Total Auditado" e "Total de Não Conformidades" para cada tipo selecionado abaixo:
+                          </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {auditTypes.map((atype) => {
-                            const isSelected = req.tipos_auditoria?.includes(atype.id);
+
+                        {/* Audit types multi-select badges */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {availableAuditTypes.map((atype) => {
+                            const isSelected = (req.tipos_auditoria || []).includes(atype.nome);
                             return (
-                              <button
+                              <div
                                 key={atype.id}
-                                type="button"
-                                onClick={() => handleToggleReqAuditType(req.id, atype.id, atype.nome)}
-                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 ${
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
                                   isSelected
                                     ? 'bg-[#355C7D] text-white border-[#355C7D] shadow-2xs'
-                                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                                 }`}
                               >
-                                <span>{isSelected ? '✓' : '+'}</span>
-                                <span>{atype.nome}</span>
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAuditTypeForReq(req.id, atype.nome)}
+                                  className="flex items-center gap-1.5"
+                                >
+                                  <span className={`w-3 h-3 rounded-xs border flex items-center justify-center text-[9px] ${
+                                    isSelected ? 'bg-white text-[#355C7D] border-white' : 'border-gray-400'
+                                  }`}>
+                                    {isSelected ? '✓' : ''}
+                                  </span>
+                                  <span>{atype.nome}</span>
+                                </button>
+                                {atype.id.startsWith('aud-') && !['aud-prod', 'aud-epis', 'aud-qual', 'aud-seg'].includes(atype.id) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAuditType(atype.id, atype.nome)}
+                                    className={`p-0.5 rounded-sm transition-colors ${
+                                      isSelected ? 'hover:bg-white/20 text-white' : 'hover:text-red-500 text-gray-400'
+                                    }`}
+                                    title="Excluir este tipo de auditoria"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
 
-                        {/* Inline creation of new audit type */}
-                        <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                        {/* Inline add new audit type */}
+                        <div className="flex items-center gap-2 pt-1">
                           <input
                             type="text"
-                            placeholder="Cadastrar novo tipo de auditoria (ex: Logística, 5S)..."
-                            value={newAuditTypeName}
-                            onChange={(e) => setNewAuditTypeName(e.target.value)}
+                            placeholder="Cadastrar novo tipo de auditoria (ex: Logística, Estoque)..."
+                            value={newAuditTypeName[req.id] || ''}
+                            onChange={(e) =>
+                              setNewAuditTypeName((prev) => ({ ...prev, [req.id]: e.target.value }))
+                            }
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                handleCreateNewAuditType(req.id);
+                                handleCreateAndAddAuditType(req.id);
                               }
                             }}
-                            className="flex-1 px-2.5 py-1 text-xs bg-white rounded-md border border-dashed border-gray-300 focus:border-[#355C7D] focus:outline-hidden"
+                            className="flex-1 px-2.5 py-1 text-xs bg-white rounded-md border border-dashed border-[#355C7D]/40 focus:border-[#355C7D] focus:outline-hidden"
                           />
                           <button
                             type="button"
-                            onClick={() => handleCreateNewAuditType(req.id)}
-                            className="px-2.5 py-1 bg-[#355C7D] hover:bg-[#284660] text-white text-[11px] font-bold rounded-md flex items-center gap-1 shrink-0 transition-colors shadow-2xs"
+                            onClick={() => handleCreateAndAddAuditType(req.id)}
+                            className="px-2.5 py-1 bg-[#355C7D] hover:bg-[#2c4c66] text-white text-[11px] font-bold rounded-md flex items-center gap-1 shadow-2xs transition-colors shrink-0"
                           >
-                            <Plus className="w-3 h-3" /> Cadastrar Tipo
+                            <Plus className="w-3 h-3" /> Adicionar Tipo
                           </button>
                         </div>
                       </div>
@@ -1394,14 +1405,14 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                   onChange={(e) => setSelectedReqType(e.target.value as TaskEvidenceType)}
                   className="px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-300 font-semibold text-gray-700 focus:outline-hidden"
                 >
-                  <option value="CHECKLIST">📋 Checklist de Verificação Operacional</option>
-                  <option value="NUMERO">🔢 Medição Numérica / Indicador</option>
-                  <option value="FOTO">📸 Evidência Fotográfica Obrigatória</option>
-                  <option value="FORMULARIO">📑 Questionário de Auditoria</option>
-                  <option value="ARQUIVO">📎 Documento / Laudo Anexo (PDF/DOC)</option>
-                  <option value="OPCAO">🔘 Seleção de Resultado Operacional</option>
+                  <option value="CHECKLIST">📋 Checklist (Itens de conferência)</option>
+                  <option value="NUMERO">🔢 Número (Medição com unidade/faixa)</option>
+                  <option value="FOTO">📸 Evidência Fotográfica Obrigatória (JPG/PNG)</option>
                   <option value="TEXTO">📝 Parecer Técnico / Relato Escrito</option>
-                  <option value="SIMPLES">✅ Confirmação de Execução</option>
+                  <option value="FORMULARIO">📑 Questionário de Auditoria (Total e Não Conformidades)</option>
+                  <option value="ARQUIVO">📎 Documento / Laudo Anexo (PDF/DOC)</option>
+                  <option value="OPCAO">🔘 Opção / Seleção Única</option>
+                  <option value="SIMPLES">✅ Confirmação de Execução (Sim / Não / Outros)</option>
                 </select>
               </div>
 

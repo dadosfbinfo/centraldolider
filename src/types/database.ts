@@ -34,16 +34,31 @@ export interface FormularioPergunta {
   obrigatoria: boolean;
 }
 
-export interface TipoAuditoriaConfig {
+export interface TipoAuditoria {
   id: string;
   nome: string;
   descricao?: string;
-  is_default?: boolean;
+  created_at?: string;
 }
 
-export interface ItemAuditoriaConfig {
-  tipo_id: string;
+export interface EvidenciaFotoItem {
+  id?: string;
   nome: string;
+  url: string;
+  tamanho?: string;
+}
+
+export interface EvidenciaArquivoItem {
+  id?: string;
+  nome: string;
+  url?: string;
+  tamanho?: string;
+}
+
+export interface AuditoriaItemSubmetido {
+  tipo_auditoria: string;
+  total_auditado: number;
+  total_nao_conformidades: number;
 }
 
 export interface RequisitoConclusao {
@@ -56,26 +71,9 @@ export interface RequisitoConclusao {
   valor_minimo?: number;
   valor_maximo?: number;
   opcoes?: string[]; // Para tipo OPCAO
-  perguntas?: FormularioPergunta[]; // Para tipo FORMULARIO legado
-  tipos_auditoria?: string[]; // IDs dos tipos de auditoria selecionados para a OS
-  itens_auditoria?: ItemAuditoriaConfig[]; // Tipos de auditoria selecionados com nome
+  perguntas?: FormularioPergunta[]; // Para tipo FORMULARIO
   checklist_itens?: ChecklistItem[]; // Para tipo CHECKLIST
-}
-
-export interface EvidenciaArquivoItem {
-  id: string;
-  nome: string;
-  tamanho?: string;
-  tipo?: string;
-  url: string; // Base64 data URL ou link
-  data_upload?: string;
-}
-
-export interface EvidenciaAuditoriaItemResposta {
-  tipo_id: string;
-  tipo_nome: string;
-  total_auditado: number | '';
-  total_nao_conformidades: number | '';
+  tipos_auditoria?: string[]; // Para tipo FORMULARIO (Questionário de Auditoria)
 }
 
 export interface EvidenciaSubmetida {
@@ -87,20 +85,20 @@ export interface EvidenciaSubmetida {
   texto_resposta?: string;
   arquivo_nome?: string;
   arquivo_url?: string;
-  arquivos?: EvidenciaArquivoItem[]; // Múltiplos arquivos (até 15)
   foto_url?: string;
-  fotos?: string[]; // Múltiplas fotos (até 15)
-  respostas_formulario?: Record<string, any>;
-  formulario_respostas?: {
-    auditorias?: Record<string, EvidenciaAuditoriaItemResposta> | EvidenciaAuditoriaItemResposta[];
-    relatorio_auditoria?: string;
-    [key: string]: any;
-  } | Record<string, any>;
+  respostas_formulario?: Record<string, string | number | boolean>;
+  formulario_respostas?: Record<string, string | number | boolean>;
   opcao_selecionada?: string;
-  confirmacao_execucao?: 'SIM' | 'NAO' | 'OUTROS';
-  confirmacao_detalhe?: string;
   checklist_concluidos?: string[]; // IDs dos itens marcados como feitos
   data_registro: string;
+
+  // Evidências estendidas (Round 12)
+  fotos?: EvidenciaFotoItem[];
+  arquivos?: EvidenciaArquivoItem[];
+  itens_auditoria?: AuditoriaItemSubmetido[];
+  relato_auditoria?: string;
+  confirmacao_resposta?: 'Sim' | 'Não' | 'Outros';
+  confirmacao_descricao?: string;
 }
 
 export type EventType = 
