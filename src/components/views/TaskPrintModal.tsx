@@ -209,28 +209,9 @@ export const TaskPrintModal: React.FC<TaskPrintModalProps> = ({ isOpen, onClose,
                     )}
 
                     {req.tipo === 'FOTO' && (
-                      <div className="p-2.5 bg-gray-50 rounded text-gray-700 space-y-2">
-                        {submetido?.fotos && submetido.fotos.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-bold text-emerald-800 mb-2">
-                              ✓ {submetido.fotos.length} foto(s) anexada(s):
-                            </div>
-                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                              {submetido.fotos.map((f, fidx) => (
-                                <div key={f.id || fidx} className="border border-gray-300 rounded p-1 bg-white">
-                                  <img
-                                    src={f.url}
-                                    alt={f.nome || 'Foto'}
-                                    className="w-full h-16 object-cover rounded"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <p className="text-[9px] font-medium text-gray-600 truncate mt-1">{f.nome}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : submetido?.foto_url ? (
-                          <div className="flex items-center gap-4">
+                      <div className="p-2 bg-gray-50 rounded text-gray-700 flex items-center gap-4">
+                        {submetido?.foto_url ? (
+                          <>
                             <img
                               src={submetido.foto_url}
                               alt="Comprovante"
@@ -240,98 +221,9 @@ export const TaskPrintModal: React.FC<TaskPrintModalProps> = ({ isOpen, onClose,
                             <span className="text-emerald-700 font-semibold text-xs">
                               ✓ Foto anexada e validada no sistema
                             </span>
-                          </div>
+                          </>
                         ) : (
                           <span className="text-gray-400 italic">Nenhum registro fotográfico anexado</span>
-                        )}
-                      </div>
-                    )}
-
-                    {req.tipo === 'ARQUIVO' && (
-                      <div className="p-2.5 bg-gray-50 rounded text-gray-700 space-y-1.5">
-                        {submetido?.arquivos && submetido.arquivos.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-bold text-blue-800 mb-1">
-                              ✓ {submetido.arquivos.length} documento(s) anexado(s):
-                            </div>
-                            <div className="space-y-1">
-                              {submetido.arquivos.map((doc, didx) => (
-                                <div key={doc.id || didx} className="text-xs text-gray-800 flex items-center gap-2">
-                                  <span>📄</span>
-                                  <span className="font-semibold">{doc.nome}</span>
-                                  {doc.tamanho && <span className="text-[10px] text-gray-500">({doc.tamanho})</span>}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : submetido?.arquivo_nome ? (
-                          <div className="text-xs text-gray-800 flex items-center gap-2">
-                            <span>📄</span>
-                            <span className="font-semibold">{submetido.arquivo_nome}</span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 italic">Nenhum documento anexado</span>
-                        )}
-                      </div>
-                    )}
-
-                    {req.tipo === 'FORMULARIO' && (
-                      <div className="p-2.5 bg-gray-50 rounded text-gray-700 space-y-2">
-                        {submetido?.itens_auditoria && submetido.itens_auditoria.length > 0 ? (
-                          <div className="space-y-2">
-                            <div className="font-bold text-[11px] text-[#355C7D] uppercase tracking-wider">
-                              Resultados de Auditoria:
-                            </div>
-                            <table className="w-full text-left border-collapse text-[11px]">
-                              <thead>
-                                <tr className="border-b border-gray-200 text-gray-600">
-                                  <th className="py-1">Tipo de Auditoria</th>
-                                  <th className="py-1 text-center">Total Auditado</th>
-                                  <th className="py-1 text-center">Não Conformidades</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {submetido.itens_auditoria.map((item, iidx) => (
-                                  <tr key={iidx} className="border-b border-gray-100">
-                                    <td className="py-1 font-semibold">{item.tipo_auditoria}</td>
-                                    <td className="py-1 text-center">{item.total_auditado}</td>
-                                    <td className="py-1 text-center font-bold text-red-600">
-                                      {item.total_nao_conformidades}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {submetido.relato_auditoria && (
-                              <div className="text-[11px] pt-1">
-                                <strong>Relato da Auditoria:</strong> {submetido.relato_auditoria}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 italic">Auditoria não preenchida</span>
-                        )}
-                      </div>
-                    )}
-
-                    {req.tipo === 'SIMPLES' && (
-                      <div className="p-2.5 bg-gray-50 rounded text-gray-700 space-y-1">
-                        <div>
-                          <strong>Confirmação de Execução:</strong>{' '}
-                          <span className={`font-bold ${
-                            (submetido?.confirmacao_resposta || submetido?.opcao_selecionada) === 'Sim'
-                              ? 'text-emerald-700'
-                              : (submetido?.confirmacao_resposta || submetido?.opcao_selecionada) === 'Não'
-                              ? 'text-red-700'
-                              : 'text-amber-700'
-                          }`}>
-                            {submetido?.confirmacao_resposta || submetido?.opcao_selecionada || 'Pendente'}
-                          </span>
-                        </div>
-                        {submetido?.confirmacao_descricao && (
-                          <div className="text-[11px] text-gray-600 pl-2 border-l-2 border-amber-300">
-                            <strong>Descrição/Justificativa:</strong> {submetido.confirmacao_descricao}
-                          </div>
                         )}
                       </div>
                     )}

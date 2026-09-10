@@ -17,7 +17,6 @@ import {
   ConfirmationStatus,
   EvidenciaSubmetida,
   AprovacaoValidador,
-  TipoAuditoria,
 } from '../types/database';
 
 const STORAGE_KEYS = {
@@ -30,19 +29,11 @@ const STORAGE_KEYS = {
   REPORTS: 'cdl_relatorios_v3',
   EVENTS: 'cdl_calendario_eventos_v1',
   CALENDAR_TYPES: 'cdl_calendar_types_v1',
-  AUDIT_TYPES: 'cdl_tipos_auditoria_v1',
   COMMENTS: 'cdl_comentarios_v1',
   NOTIFICATIONS: 'cdl_notificacoes_v1',
   SIMULATED_EMAILS: 'cdl_simulated_emails_v1',
   PASSWORDS: 'cdl_passwords_v1',
 };
-
-const INITIAL_AUDIT_TYPES: TipoAuditoria[] = [
-  { id: 'aud-prod', nome: 'Produção', descricao: 'Auditoria de processos operacionais e produtivos', created_at: '2026-08-01T08:00:00Z' },
-  { id: 'aud-epis', nome: 'EPIs', descricao: 'Uso e integridade de equipamentos de proteção individual', created_at: '2026-08-01T08:00:00Z' },
-  { id: 'aud-qual', nome: 'Qualidade', descricao: 'Padrões de conformidade técnica e acabamento', created_at: '2026-08-01T08:00:00Z' },
-  { id: 'aud-seg', nome: 'Segurança', descricao: 'Normas de segurança e prevenção de acidentes', created_at: '2026-08-01T08:00:00Z' },
-];
 
 // Initial Seed Data
 const INITIAL_UNITS: Unidade[] = [
@@ -1348,9 +1339,6 @@ class DatabaseStore {
       if (!localStorage.getItem(STORAGE_KEYS.CALENDAR_TYPES)) {
         localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
       }
-      if (!localStorage.getItem(STORAGE_KEYS.AUDIT_TYPES)) {
-        localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
-      }
 
       // Sync test users & passwords if missing
       const currentUsers = this.getUsers();
@@ -1411,7 +1399,6 @@ class DatabaseStore {
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(INITIAL_REPORTS));
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(INITIAL_EVENTS));
     localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(INITIAL_CALENDAR_TYPES));
-    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
     localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
     localStorage.setItem(STORAGE_KEYS.SIMULATED_EMAILS, JSON.stringify(INITIAL_SIMULATED_EMAILS));
@@ -3475,60 +3462,6 @@ class DatabaseStore {
         }
       }
     }
-  }
-
-  // --- AUDIT TYPES (CONFIGURAÇÃO DE TIPOS DE AUDITORIA) ---
-  public getAuditTypes(): TipoAuditoria[] {
-    const data = localStorage.getItem(STORAGE_KEYS.AUDIT_TYPES);
-    if (data === null) {
-      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
-      return INITIAL_AUDIT_TYPES;
-    }
-    try {
-      const types: TipoAuditoria[] = JSON.parse(data);
-      if (Array.isArray(types) && types.length > 0) {
-        return types;
-      }
-      return INITIAL_AUDIT_TYPES;
-    } catch {
-      return INITIAL_AUDIT_TYPES;
-    }
-  }
-
-  public createAuditType(nome: string, descricao?: string): TipoAuditoria {
-    const types = this.getAuditTypes();
-    const id = 'aud-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
-    const newType: TipoAuditoria = {
-      id,
-      nome: nome.trim(),
-      descricao: descricao?.trim() || undefined,
-      created_at: new Date().toISOString(),
-    };
-    types.push(newType);
-    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(types));
-    this.emitChange();
-    return newType;
-  }
-
-  public updateAuditType(id: string, data: Partial<TipoAuditoria>): TipoAuditoria {
-    const types = this.getAuditTypes();
-    const idx = types.findIndex((t) => t.id === id);
-    if (idx === -1) throw new Error('Tipo de auditoria não encontrado.');
-    types[idx] = { ...types[idx], ...data };
-    localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(types));
-    this.emitChange();
-    return types[idx];
-  }
-
-  public deleteAuditType(id: string): void {
-    const currentTypes = this.getAuditTypes();
-    const filtered = currentTypes.filter((t) => t.id !== id);
-    if (filtered.length === 0) {
-      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(INITIAL_AUDIT_TYPES));
-    } else {
-      localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(filtered));
-    }
-    this.emitChange();
   }
 
   // --- SIMULATED EMAILS (Outbox viewer) ---
