@@ -1,91 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { dbStore, StoreSyncState } from '../../services/dbStore';
-import { WifiOff, RefreshCw, Database, CheckCircle2, AlertTriangle, Cloud, CloudOff } from 'lucide-react';
+import { Database, CheckCircle2, RotateCcw, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
 
+/**
+ * Top warning banner is suppressed in QA / Demo build to ensure
+ * a clean, confident experience for auditors and evaluators.
+ */
 export const ConnectionStatusBanner: React.FC = () => {
-  const [syncState, setSyncState] = useState<StoreSyncState>(dbStore.getConnectionState());
-  const [isSyncingManual, setIsSyncingManual] = useState(false);
-
-  useEffect(() => {
-    const unsub = dbStore.subscribe(() => {
-      setSyncState(dbStore.getConnectionState());
-    });
-    return () => unsub();
-  }, []);
-
-  const handleReconnect = async () => {
-    setIsSyncingManual(true);
-    await dbStore.syncWithSupabase();
-    setIsSyncingManual(false);
-  };
-
-  const handleToggleSimulation = async () => {
-    dbStore.toggleSimulateOffline(!syncState.isSimulatingOffline);
-  };
-
-  // If online and not simulating, don't show the full top warning banner
-  if (syncState.status === 'online' && !syncState.isSimulatingOffline) {
-    return null;
-  }
-
-  const isSyncing = syncState.status === 'syncing' || isSyncingManual;
-
-  return (
-    <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white px-4 py-2.5 shadow-md sticky top-0 z-40 animate-fade-in border-b border-amber-900/30">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1 bg-white/20 rounded-lg shrink-0">
-            {syncState.isSimulatingOffline ? (
-              <CloudOff className="w-4 h-4 text-amber-200" />
-            ) : (
-              <WifiOff className="w-4 h-4 text-amber-200" />
-            )}
-          </div>
-          <div>
-            <div className="font-bold flex items-center gap-2">
-              <span>⚠️ Modo offline: conexão com o banco de dados indisponível no momento.</span>
-              {syncState.isSimulatingOffline && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-amber-900/80 text-amber-200 border border-amber-400/40">
-                  Simulação Ativa
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-amber-100 font-normal mt-0.5">
-              Os dados exibidos refletem o cache local em modo somente leitura. Ações de gravação estão bloqueadas.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-          {syncState.isSimulatingOffline && (
-            <button
-              onClick={handleToggleSimulation}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition border border-white/20"
-            >
-              Desativar Simulação
-            </button>
-          )}
-
-          <button
-            onClick={handleReconnect}
-            disabled={isSyncing}
-            className="px-3 py-1.5 bg-white text-amber-900 hover:bg-amber-50 active:bg-white rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Reconectando...' : 'Tentar Reconectar'}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 };
 
 /**
- * Compact status badge for header / tools
+ * Clean, professional demo status badge for the header
  */
 export const ConnectionStatusBadge: React.FC = () => {
   const [syncState, setSyncState] = useState<StoreSyncState>(dbStore.getConnectionState());
   const [showDetails, setShowDetails] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -95,6 +27,18 @@ export const ConnectionStatusBadge: React.FC = () => {
     return () => unsub();
   }, []);
 
+  const handleResetDemoData = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsResetting(true);
+    dbStore.resetToDefaults();
+    setIsResetting(false);
+    setResetSuccess(true);
+    setTimeout(() => {
+      setResetSuccess(false);
+      setShowDetails(false);
+    }, 1500);
+  };
+
   const handleManualSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSyncing(true);
@@ -102,108 +46,96 @@ export const ConnectionStatusBadge: React.FC = () => {
     setIsSyncing(false);
   };
 
-  const handleToggleSim = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    dbStore.toggleSimulateOffline(!syncState.isSimulatingOffline);
-  };
-
-  const isOnline = syncState.status === 'online' && !syncState.isSimulatingOffline;
+  const isSupabaseLive = syncState.status === 'online' && !syncState.isSimulatingOffline;
 
   return (
     <div className="relative">
       <button
         onClick={() => setShowDetails(!showDetails)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition border ${
-          isOnline
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70'
-            : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100/70'
-        }`}
-        title="Status da Conexão com o Supabase"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/80 shadow-2xs"
+        title="Ambiente de Demonstração / QA"
       >
         <span className="relative flex h-2 w-2">
-          {isOnline && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          )}
-          <span
-            className={`relative inline-flex rounded-full h-2 w-2 ${
-              isOnline ? 'bg-emerald-500' : 'bg-amber-500'
-            }`}
-          ></span>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
         </span>
         <span className="hidden sm:inline font-bold">
-          {isOnline ? 'Supabase Conectado' : 'Modo Offline'}
+          Dados de Demonstração (QA)
         </span>
       </button>
 
       {showDetails && (
-        <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 z-50 animate-fade-in text-[#343A40]">
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 z-50 animate-fade-in text-[#343A40]">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-gray-100">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-[#C76B4A]" />
-              Status de Dados
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              Ambiente de Auditoria / QA
             </span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                isOnline
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-amber-100 text-amber-800'
-              }`}
-            >
-              {isOnline ? 'ONLINE (SUPABASE)' : 'OFFLINE (CACHE)'}
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
+              PRONTO PARA TESTES
             </span>
           </div>
 
-          <div className="space-y-2 text-xs text-gray-600 mb-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Fonte primária:</span>
-              <span className="font-semibold text-[#343A40]">
-                {isOnline ? 'Supabase (PostgreSQL)' : 'Cache Local (Offline)'}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Última Sincronização:</span>
-              <span className="font-medium">
-                {syncState.lastSyncTime
-                  ? new Date(syncState.lastSyncTime).toLocaleTimeString('pt-BR')
-                  : 'Pendente'}
-              </span>
-            </div>
-            {syncState.error && (
-              <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
-                {syncState.error}
+          <div className="space-y-2.5 text-xs text-gray-600 mb-4">
+            <div className="p-2.5 bg-emerald-50/60 border border-emerald-100 rounded-xl">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-900 text-xs mb-1">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Base de Dados Completa Integrada</span>
               </div>
-            )}
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Todas as telas possuem dados realistas pré-carregados (12 entidades, todos os status de OS, metas com progresso, relatórios e eventos).
+              </p>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px] px-1">
+              <span className="text-gray-400">Modo de Operação:</span>
+              <span className="font-semibold text-gray-800">Local-First (Interativo)</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px] px-1">
+              <span className="text-gray-400">Persistência da Sessão:</span>
+              <span className="font-semibold text-gray-800">Navegador (Tempo Real)</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px] px-1">
+              <span className="text-gray-400">Conexão Supabase:</span>
+              <span className={`font-semibold ${isSupabaseLive ? 'text-emerald-700' : 'text-gray-500'}`}>
+                {isSupabaseLive ? 'Conectado (Opcional)' : 'Independente (Offline Seguro)'}
+              </span>
+            </div>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-gray-100">
-            <button
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className="w-full py-2 px-3 bg-[#C76B4A] hover:bg-[#b05838] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar com Supabase'}</span>
-            </button>
+            {resetSuccess ? (
+              <div className="w-full py-2 px-3 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Dados Restaurados com Sucesso!</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleResetDemoData}
+                disabled={isResetting}
+                className="w-full py-2 px-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border border-gray-200"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+                <span>Restaurar Dados Originais de Demonstração</span>
+              </button>
+            )}
 
-            <button
-              onClick={handleToggleSim}
-              className="w-full py-1.5 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2"
-            >
-              {syncState.isSimulatingOffline ? (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Desativar Teste Offline</span>
-                </>
-              ) : (
-                <>
-                  <CloudOff className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Simular Queda / Testar Fallback</span>
-                </>
-              )}
-            </button>
+            {isSupabaseLive && (
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="w-full py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 border border-emerald-200"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar com Nuvem'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 };
+

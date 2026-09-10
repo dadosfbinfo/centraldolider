@@ -650,6 +650,129 @@ const INITIAL_TASKS: TarefaOS[] = [
     ],
     created_at: '2026-09-01T07:00:00Z',
     updated_at: '2026-09-01T16:45:00Z'
+  },
+  {
+    id: 'os-109',
+    numero_os: 'OS #000158',
+    titulo: 'Substituição e Calibração dos Sensores de Gás GLP',
+    responsavel_id: 'user-lider-sp',
+    responsavel_nome: 'Mariana Costa',
+    responsavel_cargo: 'Gerente de Unidade',
+    unidade_id: 'unit-sp-01',
+    unidade: 'Unidade São Paulo - Matriz Pinheiros',
+    data: '2026-08-29',
+    horario: '16:00',
+    prazo: '2026-08-29T19:00:00',
+    descricao: 'Contratação de empresa especializada para substituição dos sensores de segurança GLP da praça de cocção.',
+    prioridade: 'ALTA',
+    categoria_id: 'cat-seg',
+    categoria_nome: 'Segurança & Saúde',
+    categoria_cor: '#B85C7A',
+    status: 'CANCELADA',
+    recorrencia: 'UMA_VEZ',
+    motivo_cancelamento: 'Substituição integral cancelada por substituição de matriz energética do prédio para indução elétrica homologada pela engenharia corporativa.',
+    requisitos_conclusao: [
+      {
+        id: 'req-109-1',
+        tipo: 'SIMPLES',
+        titulo: 'Certificado de Calibração com ART',
+        obrigatorio: true
+      }
+    ],
+    created_at: '2026-08-29T08:00:00Z',
+    updated_at: '2026-08-29T17:00:00Z'
+  },
+  {
+    id: 'os-110',
+    numero_os: 'OS #000159',
+    titulo: 'Auditoria de Frente de Caixa e Conformidade Fiscal',
+    responsavel_id: 'user-lider-rj',
+    responsavel_nome: 'Roberto Almeida',
+    responsavel_cargo: 'Supervisor Operacional',
+    unidade_id: 'unit-rj-01',
+    unidade: 'Unidade Rio de Janeiro - Barra da Tijuca',
+    data: '2026-09-01',
+    horario: '15:30',
+    prazo: '2026-09-01T18:30:00',
+    descricao: 'Auditoria nos caixas 1 a 4 com validação de emissão de NFC-e, teste de bobina e verificação de pinpads.',
+    prioridade: 'MEDIA',
+    categoria_id: 'cat-op',
+    categoria_nome: 'Rotina Operacional',
+    categoria_cor: '#C76B4A',
+    status: 'EM_ANDAMENTO',
+    recorrencia: 'DIARIA',
+    data_inicio: '2026-09-01T15:35:00Z',
+    requisitos_conclusao: [
+      {
+        id: 'req-110-1',
+        tipo: 'CHECKLIST',
+        titulo: 'Itens de Auditoria Fiscal',
+        obrigatorio: true,
+        checklist_itens: [
+          { id: 'f1', texto: 'Comprovantes fiscais emitidos em contingência sincronizados', concluido: true },
+          { id: 'f2', texto: 'Balança de checkout testada com peso padrão', concluido: false },
+          { id: 'f3', texto: 'Leitor de código de barras 2D operacional', concluido: false }
+        ]
+      }
+    ],
+    created_at: '2026-09-01T08:00:00Z',
+    updated_at: '2026-09-01T15:35:00Z'
+  },
+  {
+    id: 'os-111',
+    numero_os: 'OS #000160',
+    titulo: 'Auditoria de EPIs e Uniformização da Equipe de Salão',
+    responsavel_id: 'user-lider-mg',
+    responsavel_nome: 'Fernanda Lima',
+    responsavel_cargo: 'Líder de Turno',
+    unidade_id: 'unit-mg-01',
+    unidade: 'Unidade Belo Horizonte - Savassi',
+    data: '2026-08-31',
+    horario: '11:00',
+    prazo: '2026-08-31T13:00:00',
+    descricao: 'Inspeção de uniformes limpos, crachás visíveis, botas antiderrapantes e toucas da equipe de salão e manipulação.',
+    prioridade: 'MEDIA',
+    categoria_id: 'cat-seg',
+    categoria_nome: 'Segurança & Saúde',
+    categoria_cor: '#B85C7A',
+    status: 'CONCLUIDA',
+    recorrencia: 'SEMANAL',
+    data_inicio: '2026-08-31T11:05:00Z',
+    data_conclusao: '2026-08-31T12:20:00Z',
+    tempo_execucao_minutos: 75,
+    observacoes_conclusao: 'Todos os 8 colaboradores do turno da manhã estavam em conformidade 100% com o padrão de uniformes e EPIs.',
+    requisitos_conclusao: [
+      {
+        id: 'req-111-1',
+        tipo: 'NUMERO',
+        titulo: 'Total de Colaboradores Auditados',
+        unidade_medida: 'pessoas',
+        obrigatorio: true
+      },
+      {
+        id: 'req-111-2',
+        tipo: 'FOTO',
+        titulo: 'Foto da Equipe no Briefing de Início de Turno',
+        obrigatorio: true
+      }
+    ],
+    evidencias: [
+      {
+        requisito_id: 'req-111-1',
+        tipo: 'NUMERO',
+        valor_numero: 8,
+        unidade_medida: 'pessoas',
+        data_registro: '2026-08-31T12:15:00Z'
+      },
+      {
+        requisito_id: 'req-111-2',
+        tipo: 'FOTO',
+        foto_url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&auto=format&fit=crop&q=80',
+        data_registro: '2026-08-31T12:20:00Z'
+      }
+    ],
+    created_at: '2026-08-31T07:00:00Z',
+    updated_at: '2026-08-31T12:20:00Z'
   }
 ];
 
@@ -752,6 +875,26 @@ const INITIAL_GOALS: Meta[] = [
     direcao_melhor: 'MAIOR_MELHOR',
     descricao: 'Meta financeira de faturamento bruto operacional da filial.',
     status: 'EM_ANDAMENTO',
+    created_at: '2026-08-01T00:00:00Z',
+    updated_at: '2026-08-31T18:00:00Z',
+  },
+  {
+    id: 'meta-m-06',
+    indicador: 'Perdas por Avaria no Transporte',
+    meta_valor: 0.5,
+    valor_atual: 1.8,
+    unidade_medida: '%',
+    tipo_periodo: 'MENSAL',
+    periodo: 'Agosto / 2026',
+    data_inicio: '2026-08-01',
+    data_fim: '2026-08-31',
+    unidade_id: 'unit-sp-01',
+    unidade_nome: 'Unidade São Paulo - Matriz Pinheiros',
+    lider_id: 'user-lider-sp',
+    lider_nome: 'Mariana Costa',
+    direcao_melhor: 'MENOR_MELHOR',
+    descricao: 'Índice de quebras de embalagens na expedição (ultrapassou o limite tolerável de 0.5%).',
+    status: 'NAO_ATINGIDA',
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-31T18:00:00Z',
   },
@@ -1302,7 +1445,7 @@ const INITIAL_NOTIFICATIONS: Notificacao[] = [
     usuario_id: 'user-lider-sp',
     tipo: 'OS_ATRIBUIDA',
     titulo: 'Nova Ordem de Serviço Atribuída',
-    texto: 'A OS-2026-0892 (Vistoria Mensal de Extintores) foi vinculada à sua unidade.',
+    texto: 'A OS #000152 (Vistoria Mensal de Extintores) foi vinculada à sua unidade.',
     lida: false,
     link_acao: '/tarefas',
     created_at: '2026-09-01T07:00:00Z',
@@ -1312,10 +1455,40 @@ const INITIAL_NOTIFICATIONS: Notificacao[] = [
     usuario_id: 'user-lider-sp',
     tipo: 'RELATORIO_PUBLICADO',
     titulo: 'Novo Relatório Disponível',
-    texto: 'Diretrizes Operacionais Q3/2026 foi publicado para leitura obrigatória.',
+    texto: 'Manual de Diretrizes Operacionais Q3/2026 foi publicado para leitura obrigatória.',
     lida: false,
     link_acao: '/relatorios',
     created_at: '2026-09-01T06:00:00Z',
+  },
+  {
+    id: 'notif-03',
+    usuario_id: 'user-lider-sp',
+    tipo: 'META_ATUALIZADA',
+    titulo: 'Meta Mensal Atualizada',
+    texto: 'A apuração da meta de Produção alcançou 92.3% da meta estipulada.',
+    lida: true,
+    link_acao: '/metas',
+    created_at: '2026-08-31T18:00:00Z',
+  },
+  {
+    id: 'notif-04',
+    usuario_id: 'user-lider-sp',
+    tipo: 'OS_CONCLUIDA',
+    titulo: 'Ordem de Serviço Concluída',
+    texto: 'A OS #000154 (Conferência de Inventário Semanal) foi finalizada com sucesso.',
+    lida: true,
+    link_acao: '/tarefas',
+    created_at: '2026-08-31T08:45:00Z',
+  },
+  {
+    id: 'notif-05',
+    usuario_id: 'user-admin-01',
+    tipo: 'OS_BLOQUEADA',
+    titulo: 'Impedimento Operacional Reportado',
+    texto: 'A OS #000153 (Manutenção Bomba de Recalque) foi sinalizada como bloqueada.',
+    lida: false,
+    link_acao: '/tarefas',
+    created_at: '2026-08-31T16:30:00Z',
   }
 ];
 
@@ -1555,14 +1728,43 @@ class DatabaseStore {
         localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
       }
 
-      // Sync os-108 if missing
+      // Sync tasks if any initial task is missing
       const currentTasks = this.getTasks();
-      if (!currentTasks.some((t) => t.id === 'os-108')) {
-        const init108 = INITIAL_TASKS.find((t) => t.id === 'os-108');
-        if (init108) {
-          currentTasks.push(init108);
-          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(currentTasks));
+      let tasksChanged = false;
+      INITIAL_TASKS.forEach((initTask) => {
+        if (!currentTasks.some((t) => t.id === initTask.id)) {
+          currentTasks.push(initTask);
+          tasksChanged = true;
         }
+      });
+      if (tasksChanged) {
+        localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(currentTasks));
+      }
+
+      // Sync goals if any initial goal is missing
+      const currentGoals = this.getGoals();
+      let goalsChanged = false;
+      INITIAL_GOALS.forEach((initGoal) => {
+        if (!currentGoals.some((g) => g.id === initGoal.id)) {
+          currentGoals.push(initGoal);
+          goalsChanged = true;
+        }
+      });
+      if (goalsChanged) {
+        localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(currentGoals));
+      }
+
+      // Sync notifications if missing
+      const currentNotifs = this.getNotifications();
+      let notifsChanged = false;
+      INITIAL_NOTIFICATIONS.forEach((initNotif) => {
+        if (!currentNotifs.some((n) => n.id === initNotif.id)) {
+          currentNotifs.push(initNotif);
+          notifsChanged = true;
+        }
+      });
+      if (notifsChanged) {
+        localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(currentNotifs));
       }
     }
   }

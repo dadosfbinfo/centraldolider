@@ -261,6 +261,8 @@ export interface TarefaOS {
   recusado_por_id?: string;
   recusado_por_nome?: string;
   data_recusa?: string;
+  motivo_cancelamento?: string;
+  data_cancelamento?: string;
   parent_os_id?: string;
   anexo_pdf_url?: string;
   anexo_pdf_nome?: string;

@@ -2,8 +2,16 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Environment variables or fallback defaults
 const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {};
-const supabaseUrl = (metaEnv.VITE_SUPABASE_URL as string) || '';
-const supabaseAnonKey = (metaEnv.VITE_SUPABASE_ANON_KEY as string) || '';
+const rawSupabaseUrl = (metaEnv.VITE_SUPABASE_URL as string) || '';
+const rawSupabaseAnonKey = (metaEnv.VITE_SUPABASE_ANON_KEY as string) || '';
+
+// Clean and normalize the Supabase Project URL (strip trailing /rest/v1 or trailing slashes if present)
+export const supabaseUrl = rawSupabaseUrl
+  .trim()
+  .replace(/\/rest\/v1\/?$/, '')
+  .replace(/\/+$/, '');
+
+export const supabaseAnonKey = rawSupabaseAnonKey.trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
