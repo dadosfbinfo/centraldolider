@@ -3,7 +3,9 @@ import {
   TarefaOS,
   EvidenciaSubmetida,
   RequisitoConclusao,
-  ChecklistItem
+  ChecklistItem,
+  EvidenciaArquivoItem,
+  TipoAuditoriaConfig
 } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
 import { CommentsThread } from '../comments/CommentsThread';
@@ -29,7 +31,10 @@ import {
   RotateCcw,
   Ban,
   FileText,
-  FileDown
+  FileDown,
+  Trash2,
+  Eye,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface TaskExecutionModalProps {
@@ -103,6 +108,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   // Status and Confirmation Modals (OM-01, OM-02, OM-03)
   const [currentStatus, setCurrentStatus] = useState<string>(task?.status || 'PROGRAMADA');
@@ -131,13 +137,61 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
         } else if (req.tipo === 'TEXTO') {
           initialMap[req.id] = existing?.texto_resposta || '';
         } else if (req.tipo === 'FOTO') {
-          initialMap[req.id] = existing?.foto_url || '';
+          if (existing?.fotos && Array.isArray(existing.fotos)) {
+            initialMap[req.id] = existing.fotos;
+          } else if (existing?.foto_url) {
+            initialMap[req.id] = [existing.foto_url];
+          } else {
+            initialMap[req.id] = [];
+          }
         } else if (req.tipo === 'ARQUIVO') {
-          initialMap[req.id] = existing?.arquivo_url || existing?.arquivo_nome || '';
+          if (existing?.arquivos && Array.isArray(existing.arquivos)) {
+            initialMap[req.id] = existing.arquivos;
+          } else if (existing?.arquivo_nome || existing?.arquivo_url) {
+            initialMap[req.id] = [{
+              id: 'doc-init',
+              nome: existing.arquivo_nome || 'documento_anexo.pdf',
+              tamanho: '1.2 MB',
+              tipo: 'application/pdf',
+              url: existing.arquivo_url || '',
+              data_upload: existing.data_registro || new Date().toISOString()
+            }];
+          } else {
+            initialMap[req.id] = [];
+          }
         } else if (req.tipo === 'OPCAO') {
           initialMap[req.id] = existing?.opcao_selecionada || '';
         } else if (req.tipo === 'FORMULARIO') {
-          initialMap[req.id] = existing?.formulario_respostas || {};
+          const formRes = existing?.formulario_respostas || {};
+          let auditoriasMap: Record<string, { total_auditado: string | number; total_nao_conformidades: string | number }> = {};
+          if (formRes.auditorias) {
+            if (Array.isArray(formRes.auditorias)) {
+              formRes.auditorias.forEach((a: any) => {
+                auditoriasMap[a.tipo_id] = {
+                  total_auditado: a.total_auditado ?? '',
+                  total_nao_conformidades: a.total_nao_conformidades ?? '',
+                };
+              });
+            } else {
+              auditoriasMap = { ...formRes.auditorias };
+            }
+          }
+          initialMap[req.id] = {
+            auditorias: auditoriasMap,
+            relatorio_auditoria: formRes.relatorio_auditoria || existing?.texto_resposta || '',
+          };
+        } else if (req.tipo === 'SIMPLES') {
+          let status: 'SIM' | 'NAO' | 'OUTROS' | '' = existing?.confirmacao_execucao || '';
+          let descricao = existing?.confirmacao_detalhe || '';
+          if (!status && existing?.texto_resposta) {
+            if (existing.texto_resposta.startsWith('Outros:')) {
+              status = 'OUTROS';
+              descricao = existing.texto_resposta.replace('Outros:', '').trim();
+            } else if (['SIM', 'NÃO', 'NAO', 'OUTROS'].includes(existing.texto_resposta.toUpperCase())) {
+              status = existing.texto_resposta.toUpperCase() === 'NÃO' ? 'NAO' : (existing.texto_resposta.toUpperCase() as any);
+            }
+          }
+          initialMap[req.id] = { status, descricao };
         } else {
           initialMap[req.id] = true;
         }
@@ -165,7 +219,63 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
     setEvidenceMap({ ...evidenceMap, [reqId]: updated });
   };
 
-  // Simulate Photo Upload with preset real sample images
+  // Photos upload handling (up to 15 photos, JPG or PNG)
+  const handlePhotoFilesSelected = (reqId: string, files: FileList | null) => {
+    if (!files || files.length === 0 || isReadOnly) return;
+    const currentPhotos: string[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isJpgOrPng =
+        file.type === 'image/jpeg' ||
+        file.type === 'image/png' ||
+        /\.(jpe?g|png)$/i.test(file.name);
+
+      if (!isJpgOrPng) {
+        setErrorMessage(`O arquivo "${file.name}" não é suportado. Apenas imagens em JPG e PNG são aceitas.`);
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (currentPhotos.length + validFiles.length > 15) {
+      setErrorMessage('Limite máximo de 15 fotos atingido. Foram adicionadas apenas as fotos até o limite.');
+    }
+
+    const availableSlots = Math.max(0, 15 - currentPhotos.length);
+    const filesToRead = validFiles.slice(0, availableSlots);
+    if (filesToRead.length === 0) return;
+
+    let loadedCount = 0;
+    const newPhotos: string[] = [];
+
+    filesToRead.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          newPhotos.push(e.target.result as string);
+        }
+        loadedCount++;
+        if (loadedCount === filesToRead.length) {
+          setEvidenceMap((prev) => ({
+            ...prev,
+            [reqId]: [...(Array.isArray(prev[reqId]) ? prev[reqId] : []), ...newPhotos],
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemovePhoto = (reqId: string, index: number) => {
+    if (isReadOnly) return;
+    const currentPhotos: string[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+    const updated = currentPhotos.filter((_, idx) => idx !== index);
+    setEvidenceMap({ ...evidenceMap, [reqId]: updated });
+  };
+
+  // Quick sample photo helper
   const handleSimulatePhotoUpload = (reqId: string) => {
     if (isReadOnly) return;
     const samplePhotos = [
@@ -174,16 +284,169 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
       'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1584467735871-8e85353a8413?w=600&auto=format&fit=crop&q=80'
     ];
+    const currentPhotos: string[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+    if (currentPhotos.length >= 15) {
+      setErrorMessage('Limite máximo de 15 fotos já atingido.');
+      return;
+    }
     const randomPhoto = samplePhotos[Math.floor(Math.random() * samplePhotos.length)];
-    setEvidenceMap({ ...evidenceMap, [reqId]: randomPhoto });
+    setEvidenceMap({ ...evidenceMap, [reqId]: [...currentPhotos, randomPhoto] });
   };
 
-  // Simulate Document / File Upload
+  // Documents upload handling (up to 15 files, PDF or DOC/DOCX)
+  const handleDocFilesSelected = (reqId: string, files: FileList | null) => {
+    if (!files || files.length === 0 || isReadOnly) return;
+    const currentFiles: EvidenciaArquivoItem[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isDocOrPdf =
+        file.type === 'application/pdf' ||
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        /\.(pdf|docx?)$/i.test(file.name);
+
+      if (!isDocOrPdf) {
+        setErrorMessage(`O arquivo "${file.name}" não é um documento válido. Apenas extensões PDF, DOC e DOCX são permitidas.`);
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (currentFiles.length + validFiles.length > 15) {
+      setErrorMessage('Limite máximo de 15 arquivos atingido. Foram adicionados apenas os arquivos até o limite.');
+    }
+
+    const availableSlots = Math.max(0, 15 - currentFiles.length);
+    const filesToRead = validFiles.slice(0, availableSlots);
+    if (filesToRead.length === 0) return;
+
+    const formatFileSize = (bytes: number): string => {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    };
+
+    let loadedCount = 0;
+    const newItems: EvidenciaArquivoItem[] = [];
+
+    filesToRead.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        newItems.push({
+          id: 'doc-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+          nome: file.name,
+          tamanho: formatFileSize(file.size),
+          tipo: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'application/msword'),
+          url: (e.target?.result as string) || '',
+          data_upload: new Date().toISOString(),
+        });
+        loadedCount++;
+        if (loadedCount === filesToRead.length) {
+          setEvidenceMap((prev) => ({
+            ...prev,
+            [reqId]: [...(Array.isArray(prev[reqId]) ? prev[reqId] : []), ...newItems],
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveDocFile = (reqId: string, index: number) => {
+    if (isReadOnly) return;
+    const currentFiles: EvidenciaArquivoItem[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+    const updated = currentFiles.filter((_, idx) => idx !== index);
+    setEvidenceMap({ ...evidenceMap, [reqId]: updated });
+  };
+
+  // Quick sample doc upload helper
   const handleSimulateFileUpload = (reqId: string) => {
     if (isReadOnly) return;
+    const currentFiles: EvidenciaArquivoItem[] = Array.isArray(evidenceMap[reqId]) ? [...evidenceMap[reqId]] : [];
+    if (currentFiles.length >= 15) {
+      setErrorMessage('Limite máximo de 15 arquivos já atingido.');
+      return;
+    }
+    const sampleDoc: EvidenciaArquivoItem = {
+      id: 'doc-' + Date.now().toString(36),
+      nome: `Laudo_Tecnico_${task.numero_os.replace(/\s+/g, '')}_${currentFiles.length + 1}.pdf`,
+      url: '#',
+      tamanho: '1.4 MB',
+      tipo: 'application/pdf',
+      data_upload: new Date().toISOString(),
+    };
+    setEvidenceMap({ ...evidenceMap, [reqId]: [...currentFiles, sampleDoc] });
+  };
+
+  // Audit Questionnaire update handlers
+  const handleUpdateAuditRow = (
+    reqId: string,
+    tipoId: string,
+    tipoNome: string,
+    field: 'total_auditado' | 'total_nao_conformidades',
+    val: string
+  ) => {
+    if (isReadOnly) return;
+    const currentReq = evidenceMap[reqId] || { auditorias: {}, relatorio_auditoria: '' };
+    const currentAuds = currentReq.auditorias || {};
+    const currentRow = currentAuds[tipoId] || { tipo_id: tipoId, nome: tipoNome, total_auditado: '', total_nao_conformidades: '' };
+
+    const updatedRow = {
+      ...currentRow,
+      tipo_id: tipoId,
+      nome: tipoNome,
+      [field]: val === '' ? '' : Math.max(0, Number(val)),
+    };
+
     setEvidenceMap({
       ...evidenceMap,
-      [reqId]: `Laudo_Tecnico_Conformidade_${task.numero_os.replace(/\s+/g, '')}.pdf`,
+      [reqId]: {
+        ...currentReq,
+        auditorias: {
+          ...currentAuds,
+          [tipoId]: updatedRow,
+        },
+      },
+    });
+  };
+
+  const handleUpdateAuditReport = (reqId: string, reportText: string) => {
+    if (isReadOnly) return;
+    const currentReq = evidenceMap[reqId] || { auditorias: {}, relatorio_auditoria: '' };
+    setEvidenceMap({
+      ...evidenceMap,
+      [reqId]: {
+        ...currentReq,
+        relatorio_auditoria: reportText,
+      },
+    });
+  };
+
+  // Confirmação de Execução handlers
+  const handleSetSimplesStatus = (reqId: string, status: 'SIM' | 'NAO' | 'OUTROS') => {
+    if (isReadOnly) return;
+    const current = evidenceMap[reqId] || { status: '', descricao: '' };
+    setEvidenceMap({
+      ...evidenceMap,
+      [reqId]: {
+        ...current,
+        status,
+        descricao: status === 'OUTROS' ? current.descricao : '',
+      },
+    });
+  };
+
+  const handleSetSimplesDescricao = (reqId: string, descricao: string) => {
+    if (isReadOnly) return;
+    const current = evidenceMap[reqId] || { status: '', descricao: '' };
+    setEvidenceMap({
+      ...evidenceMap,
+      [reqId]: {
+        ...current,
+        descricao,
+      },
     });
   };
 
@@ -251,16 +514,48 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
             return `Preencha o campo obrigatório "${req.titulo}".`;
           }
         } else if (req.tipo === 'FOTO') {
-          if (!val) {
-            return `A foto comprobatória para "${req.titulo}" é obrigatória.`;
+          const photos = Array.isArray(val) ? val : (val ? [val] : []);
+          if (photos.length === 0) {
+            return `A evidência fotográfica obrigatória para "${req.titulo}" requer ao menos uma foto anexada (até 15 fotos).`;
           }
         } else if (req.tipo === 'ARQUIVO') {
-          if (!val) {
-            return `O anexo de documento para "${req.titulo}" é obrigatório.`;
+          const files = Array.isArray(val) ? val : (val ? [val] : []);
+          if (files.length === 0) {
+            return `O anexo de documento para "${req.titulo}" é obrigatório (ao menos um arquivo PDF ou DOC, até 15 arquivos).`;
           }
         } else if (req.tipo === 'OPCAO') {
           if (!val) {
             return `Selecione uma opção para "${req.titulo}".`;
+          }
+        } else if (req.tipo === 'FORMULARIO') {
+          const auditTypesToAudit = (req.itens_auditoria && req.itens_auditoria.length > 0)
+            ? req.itens_auditoria
+            : (req.tipos_auditoria && req.tipos_auditoria.length > 0)
+            ? req.tipos_auditoria.map((tId) => ({ tipo_id: tId, nome: dbStore.getAuditTypes().find((a) => a.id === tId)?.nome || tId }))
+            : dbStore.getAuditTypes().slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
+
+          const auditorias = val?.auditorias || {};
+          for (const item of auditTypesToAudit) {
+            const data = auditorias[item.tipo_id];
+            if (data?.total_auditado === undefined || data?.total_auditado === '') {
+              return `Informe o "Total Auditado" para a auditoria de "${item.nome}".`;
+            }
+            if (data?.total_nao_conformidades === undefined || data?.total_nao_conformidades === '') {
+              return `Informe o "Total de Não Conformidades" para a auditoria de "${item.nome}".`;
+            }
+            const totalAud = Number(data.total_auditado);
+            const totalNc = Number(data.total_nao_conformidades);
+            if (totalNc > totalAud) {
+              return `Na auditoria de "${item.nome}", o Total de Não Conformidades (${totalNc}) não pode ser maior que o Total Auditado (${totalAud}).`;
+            }
+          }
+        } else if (req.tipo === 'SIMPLES') {
+          const status = val?.status;
+          if (!status) {
+            return `Selecione uma opção de Confirmação de Execução (Sim, Não ou Outros) para "${req.titulo}".`;
+          }
+          if (status === 'OUTROS' && (!val?.descricao || !val?.descricao.trim())) {
+            return `Por favor, preencha a descrição da situação observada ao selecionar a opção "Outros" em "${req.titulo}".`;
           }
         }
       }
@@ -342,6 +637,36 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
     for (const req of task.requisitos_conclusao || []) {
       const val = evidenceMap[req.id];
 
+      let fotoUrl: string | undefined = undefined;
+      let fotosList: string[] | undefined = undefined;
+      if (req.tipo === 'FOTO') {
+        const arr = Array.isArray(val) ? val : (val ? [String(val)] : []);
+        fotosList = arr;
+        fotoUrl = arr[0] || undefined;
+      }
+
+      let arquivoNome: string | undefined = undefined;
+      let arquivoUrl: string | undefined = undefined;
+      let arquivosList: EvidenciaArquivoItem[] | undefined = undefined;
+      if (req.tipo === 'ARQUIVO') {
+        const arr = Array.isArray(val) ? val : [];
+        arquivosList = arr;
+        arquivoNome = arr.map((f: any) => f.nome).join(', ') || undefined;
+        arquivoUrl = arr[0]?.url || undefined;
+      }
+
+      let confirmacaoExecucao: 'SIM' | 'NAO' | 'OUTROS' | undefined = undefined;
+      let confirmacaoDetalhe: string | undefined = undefined;
+      let textoResp: string | undefined = undefined;
+
+      if (req.tipo === 'SIMPLES') {
+        confirmacaoExecucao = val?.status;
+        confirmacaoDetalhe = val?.status === 'OUTROS' ? val?.descricao?.trim() : undefined;
+        textoResp = val?.status === 'OUTROS' ? `Outros: ${val?.descricao?.trim() || ''}` : val?.status;
+      } else if (req.tipo === 'TEXTO') {
+        textoResp = String(val || '');
+      }
+
       // Build evidence record
       formattedEvidencias.push({
         requisito_id: req.id,
@@ -349,11 +674,16 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
         checklist_concluidos: req.tipo === 'CHECKLIST' ? (val as string[]) : undefined,
         valor_numero: req.tipo === 'NUMERO' ? Number(val) : undefined,
         unidade_medida: req.unidade_medida,
-        texto_resposta: req.tipo === 'TEXTO' ? String(val) : undefined,
-        foto_url: req.tipo === 'FOTO' ? String(val) : undefined,
-        arquivo_nome: req.tipo === 'ARQUIVO' ? String(val) : undefined,
+        texto_resposta: textoResp,
+        foto_url: fotoUrl,
+        fotos: fotosList,
+        arquivo_nome: arquivoNome,
+        arquivo_url: arquivoUrl,
+        arquivos: arquivosList,
         opcao_selecionada: req.tipo === 'OPCAO' ? String(val) : undefined,
         formulario_respostas: req.tipo === 'FORMULARIO' ? val : undefined,
+        confirmacao_execucao: confirmacaoExecucao,
+        confirmacao_detalhe: confirmacaoDetalhe,
         data_registro: now,
       });
     }
@@ -765,77 +1095,266 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
                   </div>
                 )}
 
-                {/* 3. PHOTO ATTACHMENT TYPE */}
-                {req.tipo === 'FOTO' && (
-                  <div className="space-y-3 pt-1">
-                    {evidenceMap[req.id] ? (
-                      <div className="relative w-full max-w-sm rounded-xl overflow-hidden border border-gray-200 group">
-                        <img
-                          src={evidenceMap[req.id]}
-                          alt="Evidência fotográfica"
-                          className="w-full h-44 object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => handleSimulatePhotoUpload(req.id)}
-                            className="px-3 py-1.5 bg-white/90 hover:bg-white text-[#343A40] text-xs font-bold rounded-lg shadow-sm"
-                          >
-                            Trocar Foto
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 bg-[#FAFAFA]">
-                        <Camera className="w-8 h-8 text-gray-400" />
-                        <span className="text-xs text-gray-600 font-medium">
-                          Nenhuma foto anexada ainda
-                        </span>
-                        <div className="flex items-center gap-2 mt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleSimulatePhotoUpload(req.id)}
-                            className="px-3.5 py-1.5 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
-                          >
-                            <Camera className="w-3.5 h-3.5" />
-                            Capturar / Anexar Foto
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* 3. PHOTO ATTACHMENT TYPE (Multi-photo up to 15, JPG/PNG) */}
+                {req.tipo === 'FOTO' && (() => {
+                  const photos: string[] = Array.isArray(evidenceMap[req.id])
+                    ? evidenceMap[req.id]
+                    : evidenceMap[req.id] ? [evidenceMap[req.id]] : [];
 
-                {/* 4. DOCUMENT / FILE ATTACHMENT TYPE */}
-                {req.tipo === 'ARQUIVO' && (
-                  <div className="space-y-2 pt-1">
-                    {evidenceMap[req.id] ? (
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-blue-900">
-                          <FileCheck2 className="w-4 h-4 text-blue-600" />
-                          <span>{evidenceMap[req.id]}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setEvidenceMap({ ...evidenceMap, [req.id]: '' })}
-                          className="text-xs text-blue-700 hover:underline"
-                        >
-                          Remover
-                        </button>
+                  return (
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                          <Camera className="w-3.5 h-3.5 text-amber-600" />
+                          Evidências Fotográficas (JPG ou PNG)
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          photos.length > 0 ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {photos.length} de 15 foto(s) anexada(s)
+                        </span>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleSimulateFileUpload(req.id)}
-                        className="w-full p-4 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-50 text-xs font-semibold text-gray-600 transition-colors"
-                      >
-                        <FileUp className="w-4 h-4 text-gray-400" />
-                        Clique para anexar documento técnico / laudo em PDF
-                      </button>
-                    )}
-                  </div>
-                )}
+
+                      {/* Hidden file input */}
+                      <input
+                        id={`photo-input-${req.id}`}
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                        disabled={isReadOnly || photos.length >= 15}
+                        onChange={(e) => {
+                          handlePhotoFilesSelected(req.id, e.target.files);
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+
+                      {/* Upload / Capture dropzone if not read-only and under limit */}
+                      {!isReadOnly && photos.length < 15 && (
+                        <div
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handlePhotoFilesSelected(req.id, e.dataTransfer.files);
+                          }}
+                          className="p-3.5 border-2 border-dashed border-amber-200/80 bg-amber-50/30 hover:bg-amber-50/60 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 text-center sm:text-left">
+                            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                              <Camera className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-800">
+                                Arraste fotos ou selecione do seu dispositivo
+                              </p>
+                              <p className="text-[10px] text-gray-500">
+                                Formatos JPG ou PNG (limite de até 15 fotos por requisito)
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => document.getElementById(`photo-input-${req.id}`)?.click()}
+                              className="px-3 py-1.5 bg-[#C76B4A] hover:bg-[#b05c3d] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              Anexar Fotos
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulatePhotoUpload(req.id)}
+                              className="px-2.5 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors"
+                              title="Inserir foto de exemplo rápido para testes"
+                            >
+                              Exemplo Rápido
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Gallery Grid */}
+                      {photos.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1">
+                          {photos.map((photoUrl, pIdx) => (
+                            <div
+                              key={pIdx}
+                              className="group relative rounded-xl overflow-hidden border border-gray-200 aspect-4/3 bg-gray-100 shadow-2xs transition-all hover:shadow-md"
+                            >
+                              <img
+                                src={photoUrl}
+                                alt={`Foto ${pIdx + 1}`}
+                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200"
+                                referrerPolicy="no-referrer"
+                                onClick={() => setPreviewPhotoUrl(photoUrl)}
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewPhotoUrl(photoUrl)}
+                                  className="p-1.5 bg-white/95 hover:bg-white text-gray-800 rounded-lg shadow-xs transition-transform active:scale-95"
+                                  title="Ampliar foto"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePhoto(req.id, pIdx)}
+                                    className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-xs transition-transform active:scale-95"
+                                    title="Remover foto"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded backdrop-blur-xs">
+                                #{pIdx + 1}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : isReadOnly ? (
+                        <p className="text-xs text-gray-400 italic py-1">Nenhuma evidência fotográfica registrada.</p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+
+                {/* 4. DOCUMENT / REPORT ATTACHMENT TYPE (Multi-file up to 15, PDF/DOC) */}
+                {req.tipo === 'ARQUIVO' && (() => {
+                  const files: EvidenciaArquivoItem[] = Array.isArray(evidenceMap[req.id])
+                    ? evidenceMap[req.id]
+                    : [];
+
+                  return (
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-blue-600" />
+                          Documento / Laudo Anexo (PDF ou DOC)
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          files.length > 0 ? 'bg-blue-100 text-blue-900 border border-blue-200' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {files.length} de 15 arquivo(s) anexado(s)
+                        </span>
+                      </div>
+
+                      {/* Hidden file input */}
+                      <input
+                        id={`doc-input-${req.id}`}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        disabled={isReadOnly || files.length >= 15}
+                        onChange={(e) => {
+                          handleDocFilesSelected(req.id, e.target.files);
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+
+                      {/* Upload dropzone if not read-only and under limit */}
+                      {!isReadOnly && files.length < 15 && (
+                        <div
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handleDocFilesSelected(req.id, e.dataTransfer.files);
+                          }}
+                          className="p-3.5 border-2 border-dashed border-blue-200/80 bg-blue-50/30 hover:bg-blue-50/60 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 text-center sm:text-left">
+                            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                              <FileUp className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-800">
+                                Arraste laudos ou clique para anexar documentos
+                              </p>
+                              <p className="text-[10px] text-gray-500">
+                                Formatos PDF, DOC ou DOCX (limite de até 15 arquivos)
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => document.getElementById(`doc-input-${req.id}`)?.click()}
+                              className="px-3 py-1.5 bg-[#355C7D] hover:bg-[#2A4963] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              Anexar Arquivos
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateFileUpload(req.id)}
+                              className="px-2.5 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors"
+                              title="Inserir documento de exemplo rápido para testes"
+                            >
+                              Exemplo Rápido
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* File Items List */}
+                      {files.length > 0 ? (
+                        <div className="space-y-2 pt-1">
+                          {files.map((fileItem, fIdx) => (
+                            <div
+                              key={fileItem.id || fIdx}
+                              className="p-2.5 bg-blue-50/60 border border-blue-200/80 rounded-xl flex items-center justify-between gap-3 shadow-2xs hover:bg-blue-50 transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                  <FileCheck2 className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-gray-800 truncate" title={fileItem.nome}>
+                                    {fileItem.nome}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                                    <span>{fileItem.tamanho || '1.0 MB'}</span>
+                                    {fileItem.data_upload && (
+                                      <span>• Anexado em {new Date(fileItem.data_upload).toLocaleDateString('pt-BR')}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {fileItem.url && (
+                                  <a
+                                    href={fileItem.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={fileItem.nome}
+                                    className="px-2 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100/80 rounded-lg transition-colors flex items-center gap-1"
+                                  >
+                                    <FileDown className="w-3.5 h-3.5" /> Baixar
+                                  </a>
+                                )}
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveDocFile(req.id, fIdx)}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Remover anexo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : isReadOnly ? (
+                        <p className="text-xs text-gray-400 italic py-1">Nenhum documento anexado.</p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
 
                 {/* 5. TEXT OPINION TYPE */}
                 {req.tipo === 'TEXTO' && (
@@ -872,85 +1391,197 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
                   </div>
                 )}
 
-                {/* 7. QUESTIONNAIRE FORM TYPE */}
-                {req.tipo === 'FORMULARIO' && (
-                  <div className="space-y-3 pt-1 border-t border-gray-100">
-                    {req.perguntas?.map((perg) => {
-                      const formAnswers = evidenceMap[req.id] || {};
-                      const currAnswer = formAnswers[perg.id];
+                {/* 7. QUESTIONNAIRE FORM TYPE (Questionário de Auditoria com Tipos de Auditoria) */}
+                {req.tipo === 'FORMULARIO' && (() => {
+                  const auditTypesToAudit = (req.itens_auditoria && req.itens_auditoria.length > 0)
+                    ? req.itens_auditoria
+                    : (req.tipos_auditoria && req.tipos_auditoria.length > 0)
+                    ? req.tipos_auditoria.map((tId) => ({ tipo_id: tId, nome: dbStore.getAuditTypes().find((a) => a.id === tId)?.nome || tId }))
+                    : dbStore.getAuditTypes().slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
 
-                      return (
-                        <div key={perg.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
-                          <div className="text-xs font-semibold text-gray-800 flex items-center justify-between">
-                            <span>{perg.pergunta}</span>
-                            {perg.obrigatoria && (
-                              <span className="text-[10px] text-red-500">*</span>
-                            )}
-                          </div>
+                  const currentData = evidenceMap[req.id] || { auditorias: {}, relatorio_auditoria: '' };
+                  const auditoriasMap = currentData.auditorias || {};
+                  const relatorio = currentData.relatorio_auditoria || '';
 
-                          {perg.tipo === 'SIM_NAO' && (
-                            <div className="flex items-center gap-2">
-                              {['SIM', 'NÃO'].map((opt) => (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  onClick={() =>
-                                    setEvidenceMap({
-                                      ...evidenceMap,
-                                      [req.id]: { ...formAnswers, [perg.id]: opt },
-                                    })
-                                  }
-                                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
-                                    currAnswer === opt
-                                      ? 'bg-[#355C7D] text-white border-[#355C7D]'
-                                      : 'bg-white text-gray-700 border-gray-200'
-                                  }`}
-                                >
-                                  {opt}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                  return (
+                    <div className="space-y-4 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                          Apuração das Auditorias Selecionadas ({auditTypesToAudit.length})
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-medium">
+                          Preencha o total auditado e as não conformidades
+                        </span>
+                      </div>
 
-                          {perg.tipo === 'NUMERO' && (
-                            <input
-                              type="number"
-                              placeholder="0"
-                              value={currAnswer || ''}
-                              onChange={(e) =>
-                                setEvidenceMap({
-                                  ...evidenceMap,
-                                  [req.id]: { ...formAnswers, [perg.id]: e.target.value },
-                                })
-                              }
-                              className="w-32 px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-200"
-                            />
-                          )}
+                      <div className="space-y-3">
+                        {auditTypesToAudit.map((item) => {
+                          const row = auditoriasMap[item.tipo_id] || { total_auditado: '', total_nao_conformidades: '' };
+                          const totAud = row.total_auditado !== '' ? Number(row.total_auditado) : null;
+                          const totNc = row.total_nao_conformidades !== '' ? Number(row.total_nao_conformidades) : null;
 
-                          {perg.tipo === 'SELECAO' && perg.opcoes && (
-                            <select
-                              value={currAnswer || ''}
-                              onChange={(e) =>
-                                setEvidenceMap({
-                                  ...evidenceMap,
-                                  [req.id]: { ...formAnswers, [perg.id]: e.target.value },
-                                })
-                              }
-                              className="w-full px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-200"
+                          let conformidadePct: number | null = null;
+                          if (totAud !== null && totAud > 0 && totNc !== null) {
+                            conformidadePct = Math.max(0, Math.round(((totAud - totNc) / totAud) * 100));
+                          }
+
+                          return (
+                            <div
+                              key={item.tipo_id}
+                              className="p-3 bg-emerald-50/30 border border-emerald-200/80 rounded-xl space-y-2.5 transition-all shadow-2xs"
                             >
-                              <option value="">Selecione uma opção...</option>
-                              {perg.opcoes.map((o) => (
-                                <option key={o} value={o}>
-                                  {o}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                                  <span className="text-xs font-bold text-gray-800">
+                                    {item.nome}
+                                  </span>
+                                </div>
+                                {conformidadePct !== null && (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    conformidadePct === 100
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                      : conformidadePct >= 80
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                      : 'bg-red-100 text-red-800 border border-red-300'
+                                  }`}>
+                                    {conformidadePct}% Conforme
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                                    Total Auditado <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    placeholder="Ex: 50"
+                                    disabled={isReadOnly}
+                                    value={row.total_auditado ?? ''}
+                                    onChange={(e) =>
+                                      handleUpdateAuditRow(req.id, item.tipo_id, item.nome, 'total_auditado', e.target.value)
+                                    }
+                                    className="w-full px-3 py-1.5 text-xs font-bold bg-white rounded-lg border border-gray-300 focus:outline-hidden focus:border-emerald-600"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                                    Total de Não Conformidades <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    placeholder="Ex: 2"
+                                    disabled={isReadOnly}
+                                    value={row.total_nao_conformidades ?? ''}
+                                    onChange={(e) =>
+                                      handleUpdateAuditRow(req.id, item.tipo_id, item.nome, 'total_nao_conformidades', e.target.value)
+                                    }
+                                    className="w-full px-3 py-1.5 text-xs font-bold bg-white rounded-lg border border-gray-300 focus:outline-hidden focus:border-emerald-600"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Optional Audit Remarks / Report field */}
+                      <div className="pt-1">
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Relatório / Observações da Auditoria (Opcional)
+                        </label>
+                        <textarea
+                          rows={2}
+                          disabled={isReadOnly}
+                          placeholder="Insira apontamentos, justificativas técnicas ou ocorrências verificadas durante a auditoria..."
+                          value={relatorio}
+                          onChange={(e) => handleUpdateAuditReport(req.id, e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-gray-200 focus:outline-hidden focus:border-emerald-600 resize-none disabled:bg-gray-100 disabled:text-gray-500"
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 8. EXECUTION CONFIRMATION TYPE (Sim, Não, Outros com justificativa) */}
+                {req.tipo === 'SIMPLES' && (() => {
+                  const data = evidenceMap[req.id] || { status: '', descricao: '' };
+                  const selectedStatus = data.status || '';
+
+                  return (
+                    <div className="space-y-3 pt-1">
+                      <p className="text-xs text-gray-600">
+                        {req.instrucoes || 'A atividade foi executada integralmente conforme os procedimentos e padrões operacionais previstos?'}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => handleSetSimplesStatus(req.id, 'SIM')}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 ${
+                            selectedStatus === 'SIM'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Sim
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => handleSetSimplesStatus(req.id, 'NAO')}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 ${
+                            selectedStatus === 'NAO'
+                              ? 'bg-red-600 text-white border-red-600 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Não
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => handleSetSimplesStatus(req.id, 'OUTROS')}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 ${
+                            selectedStatus === 'OUTROS'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          Outros
+                        </button>
+                      </div>
+
+                      {selectedStatus === 'OUTROS' && (
+                        <div className="pt-2 animate-in fade-in space-y-1.5">
+                          <label className="block text-xs font-bold text-amber-900">
+                            Descrição da situação / observações (Obrigatório para a opção "Outros") <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            rows={2}
+                            disabled={isReadOnly}
+                            value={data.descricao || ''}
+                            onChange={(e) => handleSetSimplesDescricao(req.id, e.target.value)}
+                            placeholder="Descreva detalhadamente as condições de execução, desvios operacionais ou justificativas..."
+                            className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-amber-300 focus:outline-hidden focus:border-amber-500 resize-none disabled:bg-gray-100 disabled:text-gray-500"
+                          />
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -1248,6 +1879,33 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
                 Confirmar Cancelamento
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / Visualização Ampliada da Foto */}
+      {previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setPreviewPhotoUrl(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-black/40 rounded-2xl overflow-hidden p-2 flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewPhotoUrl(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg transition-colors cursor-pointer"
+              title="Fechar ampliação"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={previewPhotoUrl}
+              alt="Visualização da evidência fotográfica"
+              className="max-h-[85vh] max-w-full rounded-xl object-contain mx-auto shadow-2xl"
+            />
           </div>
         </div>
       )}

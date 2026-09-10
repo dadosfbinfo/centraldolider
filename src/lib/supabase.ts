@@ -12,6 +12,15 @@ export const isSupabaseConfigured = Boolean(
   !supabaseAnonKey.includes('your-anon-key')
 );
 
+export interface SupabaseConnectionStatus {
+  isConfigured: boolean;
+  url: string;
+  connected: boolean;
+  latencyMs?: number;
+  message: string;
+  error?: string;
+}
+
 // Singleton Supabase client instance (or null if unconfigured)
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -22,6 +31,67 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       },
     })
   : null;
+
+/**
+ * Diagnostic test for verifying Supabase connectivity
+ */
+export async function checkSupabaseConnection(): Promise<SupabaseConnectionStatus> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      isConfigured: false,
+      url: supabaseUrl ? supabaseUrl.replace(/^(https:\/\/[^.]+).*/, '$1.supabase.co') : 'Não definida',
+      connected: false,
+      message: 'Variáveis de ambiente VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não configuradas ou em modo padrão.',
+    };
+  }
+
+  const start = performance.now();
+  try {
+    // Attempt a light query to auth or health check
+    const { error } = await supabase.from('unidades').select('count', { count: 'exact', head: true });
+    const latencyMs = Math.round(performance.now() - start);
+
+    if (error) {
+      // Check auth endpoint response
+      const authRes = await supabase.auth.getSession();
+      if (authRes.error) {
+        return {
+          isConfigured: true,
+          url: supabaseUrl,
+          connected: false,
+          latencyMs,
+          message: `Falha de autenticação no Supabase: ${error.message}`,
+          error: error.message,
+        };
+      }
+      return {
+        isConfigured: true,
+        url: supabaseUrl,
+        connected: true,
+        latencyMs,
+        message: `Serviço Supabase acessível (${latencyMs}ms). Tabela 'unidades' retornou '${error.message}'. Execute o script SQL no SQL Editor do Supabase se ainda não criou as tabelas.`,
+      };
+    }
+
+    return {
+      isConfigured: true,
+      url: supabaseUrl,
+      connected: true,
+      latencyMs,
+      message: `Conectado com sucesso ao Supabase! Latência de resposta: ${latencyMs}ms.`,
+    };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - start);
+    return {
+      isConfigured: true,
+      url: supabaseUrl,
+      connected: false,
+      latencyMs,
+      message: `Falha na requisição: ${err?.message || 'Verifique se o endpoint e as credenciais estão corretos.'}`,
+      error: err?.message,
+    };
+  }
+}
 
 /**
  * Script SQL DDL Completo com todas as 10 tabelas, RLS e Triggers para Supabase

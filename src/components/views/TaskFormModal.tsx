@@ -10,7 +10,8 @@ import {
   Unidade,
   Categoria,
   Lider,
-  UsuarioPerfil
+  UsuarioPerfil,
+  TipoAuditoriaConfig
 } from '../../types/database';
 import { dbStore } from '../../services/dbStore';
 import { useAuth } from '../../context/AuthContext';
@@ -88,6 +89,8 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   // Quick state for adding a new requirement item
   const [selectedReqType, setSelectedReqType] = useState<TaskEvidenceType>('CHECKLIST');
   const [newChecklistItemTexts, setNewChecklistItemTexts] = useState<Record<string, string>>({});
+  const [auditTypes, setAuditTypes] = useState<TipoAuditoriaConfig[]>([]);
+  const [newAuditTypeName, setNewAuditTypeName] = useState('');
 
   // Error handling
   const [errorMessage, setErrorMessage] = useState('');
@@ -99,6 +102,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       const cList = dbStore.getCategories();
       let lList = dbStore.getLeaders();
       const vList = dbStore.getUsers().filter((u) => u.role === 'ADMINISTRADOR' || u.role === 'GERENCIA');
+      const aTypes = dbStore.getAuditTypes();
 
       if (currentUser?.role === 'GERENCIA') {
         const managedProjectIds = dbStore.getManagedProjectIds(currentUser.id);
@@ -114,6 +118,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       setCategories(cList);
       setLeaders(lList);
       setValidatorUsers(vList);
+      setAuditTypes(aTypes);
 
       if (taskToEdit) {
         setTitulo(taskToEdit.titulo);
@@ -139,7 +144,24 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         setPrazo(taskToEdit.prazo || '');
         setRecorrencia(taskToEdit.recorrencia || 'UMA_VEZ');
         setDiasSemana(taskToEdit.recorrencia_config?.dias_semana || [1, 2, 3, 4, 5]);
-        setRequisitos(taskToEdit.requisitos_conclusao ? [...taskToEdit.requisitos_conclusao] : []);
+        
+        // Normalize FORMULARIO requirements so audit types are ready
+        const normalizedReqs = (taskToEdit.requisitos_conclusao ? [...taskToEdit.requisitos_conclusao] : []).map((req) => {
+          if (req.tipo === 'FORMULARIO') {
+            const hasTypes = req.tipos_auditoria && req.tipos_auditoria.length > 0;
+            if (!hasTypes) {
+              const defTypes = aTypes.slice(0, 2).map((a) => a.id);
+              const defItens = aTypes.slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
+              return {
+                ...req,
+                tipos_auditoria: defTypes,
+                itens_auditoria: defItens,
+              };
+            }
+          }
+          return req;
+        });
+        setRequisitos(normalizedReqs);
         setAnexoPdfNome(taskToEdit.anexo_pdf_nome || '');
         setAnexoPdfUrl(taskToEdit.anexo_pdf_url || '');
         setAnexoPdfTamanho(taskToEdit.anexo_pdf_tamanho || '');
@@ -282,7 +304,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           id: newId,
           tipo: 'FOTO',
           titulo: 'Evidência Fotográfica Obrigatória',
-          instrucoes: 'Anexe uma foto nítida comprovando o resultado',
+          instrucoes: 'Anexe fotos comprobatórias do resultado (JPG ou PNG, até 15 fotos)',
           obrigatorio: true,
         };
         break;
@@ -291,7 +313,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           id: newId,
           tipo: 'ARQUIVO',
           titulo: 'Documento / Laudo Anexo (PDF/DOC)',
-          instrucoes: 'Faça upload do comprovante emitido',
+          instrucoes: 'Faça upload de comprovantes ou laudos técnicos (PDF ou DOC/DOCX, até 15 arquivos)',
           obrigatorio: true,
         };
         break;
@@ -304,30 +326,77 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           opcoes: ['Aprovado sem ressalvas', 'Aprovado com pendências leves', 'Reprovado / Crítico']
         };
         break;
-      case 'FORMULARIO':
+      case 'FORMULARIO': {
+        const aTypes = dbStore.getAuditTypes();
+        const defaultSelected = aTypes.slice(0, 2).map((a) => a.id);
+        const defaultItens = aTypes.slice(0, 2).map((a) => ({ tipo_id: a.id, nome: a.nome }));
         newReq = {
           id: newId,
           tipo: 'FORMULARIO',
           titulo: 'Questionário de Auditoria',
+          instrucoes: 'Preencha o total auditado e total de não conformidades para cada tipo',
           obrigatorio: true,
-          perguntas: [
-            { id: 'q1', pergunta: 'O ambiente estava em conformidade?', tipo: 'SIM_NAO', obrigatoria: true },
-            { id: 'q2', pergunta: 'Total de não-conformidades encontradas:', tipo: 'NUMERO', obrigatoria: true },
-          ]
+          tipos_auditoria: defaultSelected,
+          itens_auditoria: defaultItens,
         };
         break;
+      }
       case 'SIMPLES':
       default:
         newReq = {
           id: newId,
           tipo: 'SIMPLES',
           titulo: 'Confirmação de Execução',
+          instrucoes: 'Confirme se a execução foi realizada conforme o escopo (Sim, Não ou Outros)',
           obrigatorio: true,
         };
         break;
     }
 
     setRequisitos([...requisitos, newReq]);
+  };
+
+  // Toggle Audit Type in requirement
+  const handleToggleReqAuditType = (reqId: string, typeId: string, typeName: string) => {
+    setRequisitos(
+      requisitos.map((r) => {
+        if (r.id === reqId) {
+          const current = r.tipos_auditoria || [];
+          const currentItens = r.itens_auditoria || [];
+          let updatedTypes: string[];
+          let updatedItens: { tipo_id: string; nome: string }[];
+          if (current.includes(typeId)) {
+            updatedTypes = current.filter((id) => id !== typeId);
+            updatedItens = currentItens.filter((item) => item.tipo_id !== typeId);
+          } else {
+            updatedTypes = [...current, typeId];
+            updatedItens = [...currentItens, { tipo_id: typeId, nome: typeName }];
+          }
+          return {
+            ...r,
+            tipos_auditoria: updatedTypes,
+            itens_auditoria: updatedItens,
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleCreateNewAuditType = (reqId?: string) => {
+    const trimmed = newAuditTypeName.trim();
+    if (!trimmed) return;
+    try {
+      const created = dbStore.createAuditType({ nome: trimmed });
+      const updatedList = dbStore.getAuditTypes();
+      setAuditTypes(updatedList);
+      setNewAuditTypeName('');
+      if (reqId) {
+        handleToggleReqAuditType(reqId, created.id, created.nome);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao cadastrar tipo de auditoria.');
+    }
   };
 
   const handleRemoveRequirement = (id: string) => {
@@ -1253,6 +1322,64 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {req.tipo === 'FORMULARIO' && (
+                      <div className="space-y-2.5 pt-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-gray-700">
+                            Tipos de Auditoria Designados ({req.tipos_auditoria?.length || 0} selecionados):
+                          </label>
+                          <span className="text-[10px] text-gray-500">
+                            Clique para selecionar quais auditorias o Líder deve responder
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {auditTypes.map((atype) => {
+                            const isSelected = req.tipos_auditoria?.includes(atype.id);
+                            return (
+                              <button
+                                key={atype.id}
+                                type="button"
+                                onClick={() => handleToggleReqAuditType(req.id, atype.id, atype.nome)}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 ${
+                                  isSelected
+                                    ? 'bg-[#355C7D] text-white border-[#355C7D] shadow-2xs'
+                                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                }`}
+                              >
+                                <span>{isSelected ? '✓' : '+'}</span>
+                                <span>{atype.nome}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Inline creation of new audit type */}
+                        <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                          <input
+                            type="text"
+                            placeholder="Cadastrar novo tipo de auditoria (ex: Logística, 5S)..."
+                            value={newAuditTypeName}
+                            onChange={(e) => setNewAuditTypeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCreateNewAuditType(req.id);
+                              }
+                            }}
+                            className="flex-1 px-2.5 py-1 text-xs bg-white rounded-md border border-dashed border-gray-300 focus:border-[#355C7D] focus:outline-hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleCreateNewAuditType(req.id)}
+                            className="px-2.5 py-1 bg-[#355C7D] hover:bg-[#284660] text-white text-[11px] font-bold rounded-md flex items-center gap-1 shrink-0 transition-colors shadow-2xs"
+                          >
+                            <Plus className="w-3 h-3" /> Cadastrar Tipo
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -1267,14 +1394,14 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                   onChange={(e) => setSelectedReqType(e.target.value as TaskEvidenceType)}
                   className="px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-300 font-semibold text-gray-700 focus:outline-hidden"
                 >
-                  <option value="CHECKLIST">📋 Checklist (Itens de conferência)</option>
-                  <option value="NUMERO">🔢 Número (Medição com unidade/faixa)</option>
-                  <option value="FOTO">📸 Foto Comprobatória</option>
-                  <option value="TEXTO">📝 Parecer / Texto Justificativo</option>
-                  <option value="FORMULARIO">📑 Formulário com Perguntas</option>
-                  <option value="ARQUIVO">📎 Arquivo Anexo (PDF/DOC)</option>
-                  <option value="OPCAO">🔘 Opção / Seleção Única</option>
-                  <option value="SIMPLES">✅ Marcação Simples (Executado)</option>
+                  <option value="CHECKLIST">📋 Checklist de Verificação Operacional</option>
+                  <option value="NUMERO">🔢 Medição Numérica / Indicador</option>
+                  <option value="FOTO">📸 Evidência Fotográfica Obrigatória</option>
+                  <option value="FORMULARIO">📑 Questionário de Auditoria</option>
+                  <option value="ARQUIVO">📎 Documento / Laudo Anexo (PDF/DOC)</option>
+                  <option value="OPCAO">🔘 Seleção de Resultado Operacional</option>
+                  <option value="TEXTO">📝 Parecer Técnico / Relato Escrito</option>
+                  <option value="SIMPLES">✅ Confirmação de Execução</option>
                 </select>
               </div>
 
