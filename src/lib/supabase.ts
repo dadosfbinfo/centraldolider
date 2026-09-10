@@ -37,7 +37,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. TABELA: UNIDADES / PROJETOS
 CREATE TABLE IF NOT EXISTS public.unidades (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     nome VARCHAR(255) NOT NULL,
     regional VARCHAR(100),
     codigo VARCHAR(50) UNIQUE,
@@ -51,14 +51,14 @@ CREATE TABLE IF NOT EXISTS public.unidades (
 
 -- 2. TABELA: USUARIOS / PERFIS
 CREATE TABLE IF NOT EXISTS public.usuarios (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     email VARCHAR(255) UNIQUE NOT NULL,
     nome VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'LIDER' CHECK (role IN ('ADMINISTRADOR', 'GERENCIA', 'LIDER')),
     status_confirmacao VARCHAR(50) NOT NULL DEFAULT 'PENDENTE' CHECK (status_confirmacao IN ('CONFIRMADO', 'PENDENTE')),
-    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    unidade_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
-    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     projeto_nome VARCHAR(255),
     cargo VARCHAR(100),
     telefone VARCHAR(50),
@@ -70,16 +70,16 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
 
 -- 3. TABELA: LIDERES
 CREATE TABLE IF NOT EXISTS public.lideres (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    usuario_id UUID REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    usuario_id TEXT REFERENCES public.usuarios(id) ON DELETE CASCADE,
     nome VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     matricula VARCHAR(50) UNIQUE,
     cargo VARCHAR(100) NOT NULL,
     unidade VARCHAR(255) NOT NULL,
-    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    unidade_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     projeto VARCHAR(255),
-    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     regional VARCHAR(100),
     gestor VARCHAR(255) NOT NULL,
     gestores_imediatos_ids TEXT[] DEFAULT '{}',
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS public.lideres (
 
 -- 4. TABELA: CATEGORIAS (para Tarefas/OS)
 CREATE TABLE IF NOT EXISTS public.categorias (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     nome VARCHAR(100) NOT NULL,
     cor VARCHAR(20) DEFAULT '#C76B4A',
     descricao TEXT,
@@ -104,16 +104,16 @@ CREATE TABLE IF NOT EXISTS public.categorias (
 
 -- 5. TABELA: TAREFAS_OS (Ordem de Serviço com rastreabilidade completa)
 CREATE TABLE IF NOT EXISTS public.tarefas_os (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     numero_os VARCHAR(50) UNIQUE NOT NULL,
     titulo VARCHAR(255) NOT NULL,
-    responsavel_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    responsavel_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     responsavel_nome VARCHAR(255) NOT NULL,
     responsavel_email VARCHAR(255),
     responsavel_cargo VARCHAR(100),
-    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    unidade_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade VARCHAR(255) NOT NULL,
-    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     projeto VARCHAR(255),
     projetos_ids TEXT[] DEFAULT '{}',
     projetos_nomes TEXT[] DEFAULT '{}',
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS public.tarefas_os (
     prazo TIMESTAMP WITH TIME ZONE,
     descricao TEXT NOT NULL,
     prioridade VARCHAR(20) DEFAULT 'MEDIA' CHECK (prioridade IN ('BAIXA', 'MEDIA', 'ALTA', 'CRITICA')),
-    categoria_id UUID REFERENCES public.categorias(id) ON DELETE SET NULL,
+    categoria_id TEXT REFERENCES public.categorias(id) ON DELETE SET NULL,
     categoria_nome VARCHAR(100),
     categoria_cor VARCHAR(20),
     status VARCHAR(30) DEFAULT 'PROGRAMADA' CHECK (status IN ('PROGRAMADA', 'EM_ANDAMENTO', 'AGUARDANDO_VALIDACAO', 'CONCLUIDA', 'ATRASADA', 'BLOQUEADA', 'CANCELADA')),
@@ -142,15 +142,15 @@ CREATE TABLE IF NOT EXISTS public.tarefas_os (
     data_conclusao TIMESTAMP WITH TIME ZONE,
     tempo_execucao_minutos INTEGER,
     observacoes_conclusao TEXT,
-    validado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    validado_por_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     validado_por_nome VARCHAR(255),
     validado_por_role VARCHAR(50),
     data_validacao TIMESTAMP WITH TIME ZONE,
     motivo_recusa TEXT,
-    recusado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    recusado_por_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     recusado_por_nome VARCHAR(255),
     data_recusa TIMESTAMP WITH TIME ZONE,
-    parent_os_id UUID REFERENCES public.tarefas_os(id) ON DELETE SET NULL,
+    parent_os_id TEXT REFERENCES public.tarefas_os(id) ON DELETE SET NULL,
     anexo_pdf_url TEXT,
     anexo_pdf_nome VARCHAR(255),
     anexo_pdf_tamanho VARCHAR(50),
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS public.tarefas_os (
 
 -- 6. TABELA: METAS
 CREATE TABLE IF NOT EXISTS public.metas (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     indicador VARCHAR(255) NOT NULL,
     meta_valor NUMERIC(15,2) NOT NULL,
     valor_atual NUMERIC(15,2) DEFAULT 0.00,
@@ -169,13 +169,13 @@ CREATE TABLE IF NOT EXISTS public.metas (
     periodo VARCHAR(100) NOT NULL,
     data_inicio DATE,
     data_fim DATE,
-    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    unidade_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
-    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     projeto_nome VARCHAR(255),
     projetos_ids TEXT[] DEFAULT '{}',
     projetos_nomes TEXT[] DEFAULT '{}',
-    lider_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    lider_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     lider_nome VARCHAR(255),
     lideres_ids TEXT[] DEFAULT '{}',
     lideres_nomes TEXT[] DEFAULT '{}',
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS public.metas (
 
 -- 7. TABELA: RELATORIOS
 CREATE TABLE IF NOT EXISTS public.relatorios (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     titulo VARCHAR(255) NOT NULL,
     tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('DIARIO', 'SEMANAL', 'MENSAL')),
     periodo VARCHAR(100) NOT NULL,
@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS public.relatorios (
 
 -- 8. TABELA: CALENDARIO_EVENTOS
 CREATE TABLE IF NOT EXISTS public.calendario_eventos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     titulo VARCHAR(255) NOT NULL,
     tipo VARCHAR(50) NOT NULL,
     tipo_custom_nome VARCHAR(100),
@@ -223,11 +223,11 @@ CREATE TABLE IF NOT EXISTS public.calendario_eventos (
     horario_inicio TIME NOT NULL,
     horario_fim TIME,
     dia_inteiro BOOLEAN DEFAULT FALSE,
-    unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    unidade_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     unidade_nome VARCHAR(255),
-    projeto_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+    projeto_id TEXT REFERENCES public.unidades(id) ON DELETE SET NULL,
     projeto_nome VARCHAR(255),
-    lider_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    lider_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     lider_nome VARCHAR(255),
     publico_tipo VARCHAR(30) DEFAULT 'TODOS' CHECK (publico_tipo IN ('TODOS', 'UNIDADES', 'LIDERES')),
     unidades_alvo TEXT[] DEFAULT '{}',
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS public.calendario_eventos (
     descricao TEXT,
     local VARCHAR(255),
     link_reuniao TEXT,
-    criado_por_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    criado_por_id TEXT REFERENCES public.usuarios(id) ON DELETE SET NULL,
     criado_por_nome VARCHAR(255),
     status VARCHAR(30) DEFAULT 'AGENDADO' CHECK (status IN ('AGENDADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -245,29 +245,50 @@ CREATE TABLE IF NOT EXISTS public.calendario_eventos (
 
 -- 9. TABELA: COMENTARIOS (Polimórfica para tarefas, metas, relatórios, eventos)
 CREATE TABLE IF NOT EXISTS public.comentarios (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    autor_id UUID REFERENCES public.usuarios(id) ON DELETE CASCADE NOT NULL,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    autor_id TEXT REFERENCES public.usuarios(id) ON DELETE CASCADE NOT NULL,
     autor_nome VARCHAR(255) NOT NULL,
     autor_role VARCHAR(50) NOT NULL,
     autor_avatar TEXT,
     texto TEXT NOT NULL,
     item_tipo VARCHAR(30) NOT NULL CHECK (item_tipo IN ('TAREFA', 'META', 'RELATORIO', 'EVENTO', 'CALENDARIO')),
-    item_id UUID NOT NULL,
+    item_id TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 10. TABELA: NOTIFICACOES
 CREATE TABLE IF NOT EXISTS public.notificacoes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    usuario_id UUID REFERENCES public.usuarios(id) ON DELETE CASCADE NOT NULL,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    usuario_id TEXT REFERENCES public.usuarios(id) ON DELETE CASCADE NOT NULL,
     tipo VARCHAR(50) NOT NULL,
     titulo VARCHAR(255) NOT NULL,
     texto TEXT NOT NULL,
     lida BOOLEAN DEFAULT FALSE,
     item_tipo VARCHAR(50),
-    item_id UUID,
+    item_id TEXT,
     link_acao TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 11. TABELA: TIPOS_CALENDARIO (Configurações de tipos de eventos de calendário)
+CREATE TABLE IF NOT EXISTS public.tipos_calendario (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    nome VARCHAR(100) NOT NULL,
+    cor VARCHAR(30) NOT NULL,
+    descricao TEXT,
+    is_default BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 12. TABELA: TIPOS_AUDITORIA (Configurações de tipos de auditoria para OS)
+CREATE TABLE IF NOT EXISTS public.tipos_auditoria (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    nome VARCHAR(100) NOT NULL,
+    descricao TEXT,
+    is_default BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- ==============================================================================
@@ -281,45 +302,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_usuarios_modtime ON public.usuarios;
 CREATE TRIGGER update_usuarios_modtime BEFORE UPDATE ON public.usuarios FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+DROP TRIGGER IF EXISTS update_lideres_modtime ON public.lideres;
 CREATE TRIGGER update_lideres_modtime BEFORE UPDATE ON public.lideres FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+DROP TRIGGER IF EXISTS update_tarefas_os_modtime ON public.tarefas_os;
 CREATE TRIGGER update_tarefas_os_modtime BEFORE UPDATE ON public.tarefas_os FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+DROP TRIGGER IF EXISTS update_metas_modtime ON public.metas;
 CREATE TRIGGER update_metas_modtime BEFORE UPDATE ON public.metas FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+DROP TRIGGER IF EXISTS update_relatorios_modtime ON public.relatorios;
 CREATE TRIGGER update_relatorios_modtime BEFORE UPDATE ON public.relatorios FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
--- ==============================================================================
--- SINCRONIZAÇÃO AUTOMÁTICA DE AUTH COM TABELA USUARIOS (PUBLIC.USUARIOS)
--- ==============================================================================
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.usuarios (id, email, nome, role, status_confirmacao, created_at, updated_at)
-    VALUES (
-        NEW.id,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'nome', split_part(NEW.email, '@', 1)),
-        COALESCE(NEW.raw_user_meta_data->>'role', 'LIDER'),
-        CASE WHEN NEW.email_confirmed_at IS NOT NULL THEN 'CONFIRMADO' ELSE 'PENDENTE' END,
-        now(),
-        now()
-    )
-    ON CONFLICT (id) DO UPDATE
-    SET 
-        email = EXCLUDED.email,
-        status_confirmacao = CASE WHEN NEW.email_confirmed_at IS NOT NULL THEN 'CONFIRMADO' ELSE public.usuarios.status_confirmacao END,
-        updated_at = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+DROP TRIGGER IF EXISTS update_tipos_calendario_modtime ON public.tipos_calendario;
+CREATE TRIGGER update_tipos_calendario_modtime BEFORE UPDATE ON public.tipos_calendario FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
--- Trigger disparado quando um novo usuário se registra no auth.users
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT OR UPDATE OF email_confirmed_at ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+DROP TRIGGER IF EXISTS update_tipos_auditoria_modtime ON public.tipos_auditoria;
+CREATE TRIGGER update_tipos_auditoria_modtime BEFORE UPDATE ON public.tipos_auditoria FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ==============================================================================
 -- POLÍTICAS DE SEGURANÇA POR LINHA (ROW LEVEL SECURITY - RLS)
+-- Baseadas em perfis e autorização em public.usuarios via auth.uid() / auth.jwt()
 -- ==============================================================================
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lideres ENABLE ROW LEVEL SECURITY;
@@ -331,51 +337,306 @@ ALTER TABLE public.relatorios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calendario_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.comentarios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tipos_calendario ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tipos_auditoria ENABLE ROW LEVEL SECURITY;
 
--- Função auxiliar para verificar se o usuário autenticado é ADMINISTRADOR
+-- Funções auxiliares de contexto de usuário e papel
+CREATE OR REPLACE FUNCTION public.current_user_role()
+RETURNS VARCHAR AS $$
+    SELECT role FROM public.usuarios 
+    WHERE id = auth.uid()::text OR email = auth.jwt()->>'email' 
+    LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN EXISTS (
-        SELECT 1 FROM public.usuarios
-        WHERE id = auth.uid() AND role = 'ADMINISTRADOR'
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+    SELECT (public.current_user_role() = 'ADMINISTRADOR');
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
 
--- Função auxiliar para verificar se é ADMINISTRADOR ou GERENCIA
 CREATE OR REPLACE FUNCTION public.is_admin_or_gerencia()
 RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN EXISTS (
-        SELECT 1 FROM public.usuarios
-        WHERE id = auth.uid() AND role IN ('ADMINISTRADOR', 'GERENCIA')
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+    SELECT (public.current_user_role() IN ('ADMINISTRADOR', 'GERENCIA'));
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
 
--- RLS: USUARIOS (Admin/Gerência veem usuários; Líder vê seu perfil)
-CREATE POLICY "Leitura de usuarios" ON public.usuarios FOR SELECT USING (public.is_admin_or_gerencia() OR auth.uid() = id);
-CREATE POLICY "Atualizacao de usuarios" ON public.usuarios FOR UPDATE USING (public.is_admin() OR auth.uid() = id);
-CREATE POLICY "Admins podem deletar usuarios" ON public.usuarios FOR DELETE USING (public.is_admin());
+CREATE OR REPLACE FUNCTION public.current_user_id()
+RETURNS TEXT AS $$
+    SELECT COALESCE(auth.uid()::text, (SELECT id FROM public.usuarios WHERE email = auth.jwt()->>'email' LIMIT 1));
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
 
--- RLS: TAREFAS_OS (Admin/Gerência gerenciam; Líder vê e executa as suas)
-CREATE POLICY "Tarefas leitura" ON public.tarefas_os FOR SELECT USING (public.is_admin_or_gerencia() OR responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids));
-CREATE POLICY "Tarefas criacao e edicao gestao" ON public.tarefas_os FOR ALL USING (public.is_admin_or_gerencia());
-CREATE POLICY "Lider atualiza status e evidencias tarefa" ON public.tarefas_os FOR UPDATE USING (responsavel_id = auth.uid() OR auth.uid()::text = ANY(lideres_ids)) WITH CHECK (status IS DISTINCT FROM 'CANCELADA' OR public.is_admin_or_gerencia());
+-- 1. TABELA: USUARIOS
+DROP POLICY IF EXISTS "Acesso total usuarios" ON public.usuarios;
+DROP POLICY IF EXISTS "usuarios_select_policy" ON public.usuarios;
+DROP POLICY IF EXISTS "usuarios_insert_policy" ON public.usuarios;
+DROP POLICY IF EXISTS "usuarios_update_policy" ON public.usuarios;
+DROP POLICY IF EXISTS "usuarios_delete_policy" ON public.usuarios;
 
--- RLS: NOTIFICACOES
-CREATE POLICY "Usuario gerencia suas notificacoes" ON public.notificacoes FOR ALL USING (usuario_id = auth.uid() OR public.is_admin());
+CREATE POLICY "usuarios_select_policy" ON public.usuarios 
+FOR SELECT USING (public.is_admin_or_gerencia() OR id = public.current_user_id());
 
--- RLS: COMENTARIOS
-CREATE POLICY "Leitura de comentarios" ON public.comentarios FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Criacao de comentarios" ON public.comentarios FOR INSERT TO authenticated WITH CHECK (auth.uid() = autor_id);
+CREATE POLICY "usuarios_insert_policy" ON public.usuarios 
+FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "usuarios_update_policy" ON public.usuarios 
+FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "usuarios_delete_policy" ON public.usuarios 
+FOR DELETE USING (public.is_admin());
+
+-- 2. TABELA: LIDERES
+DROP POLICY IF EXISTS "Acesso total lideres" ON public.lideres;
+DROP POLICY IF EXISTS "lideres_select_policy" ON public.lideres;
+DROP POLICY IF EXISTS "lideres_insert_policy" ON public.lideres;
+DROP POLICY IF EXISTS "lideres_update_policy" ON public.lideres;
+DROP POLICY IF EXISTS "lideres_delete_policy" ON public.lideres;
+
+CREATE POLICY "lideres_select_policy" ON public.lideres 
+FOR SELECT USING (public.is_admin_or_gerencia() OR usuario_id = public.current_user_id());
+
+CREATE POLICY "lideres_insert_policy" ON public.lideres 
+FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "lideres_update_policy" ON public.lideres 
+FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "lideres_delete_policy" ON public.lideres 
+FOR DELETE USING (public.is_admin());
+
+-- 3. TABELA: UNIDADES (Projetos)
+DROP POLICY IF EXISTS "Acesso total unidades" ON public.unidades;
+DROP POLICY IF EXISTS "unidades_select_policy" ON public.unidades;
+DROP POLICY IF EXISTS "unidades_insert_policy" ON public.unidades;
+DROP POLICY IF EXISTS "unidades_update_policy" ON public.unidades;
+DROP POLICY IF EXISTS "unidades_delete_policy" ON public.unidades;
+
+CREATE POLICY "unidades_select_policy" ON public.unidades 
+FOR SELECT USING (auth.role() = 'authenticated' OR public.current_user_id() IS NOT NULL);
+
+CREATE POLICY "unidades_insert_policy" ON public.unidades 
+FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "unidades_update_policy" ON public.unidades 
+FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "unidades_delete_policy" ON public.unidades 
+FOR DELETE USING (public.is_admin());
+
+-- 4. TABELA: CATEGORIAS
+DROP POLICY IF EXISTS "Acesso total categorias" ON public.categorias;
+DROP POLICY IF EXISTS "categorias_select_policy" ON public.categorias;
+DROP POLICY IF EXISTS "categorias_insert_policy" ON public.categorias;
+DROP POLICY IF EXISTS "categorias_update_policy" ON public.categorias;
+DROP POLICY IF EXISTS "categorias_delete_policy" ON public.categorias;
+
+CREATE POLICY "categorias_select_policy" ON public.categorias 
+FOR SELECT USING (auth.role() = 'authenticated' OR public.current_user_id() IS NOT NULL);
+
+CREATE POLICY "categorias_insert_policy" ON public.categorias 
+FOR INSERT WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "categorias_update_policy" ON public.categorias 
+FOR UPDATE USING (public.is_admin_or_gerencia()) WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "categorias_delete_policy" ON public.categorias 
+FOR DELETE USING (public.is_admin_or_gerencia());
+
+-- 5. TABELA: TAREFAS_OS
+DROP POLICY IF EXISTS "Acesso total tarefas_os" ON public.tarefas_os;
+DROP POLICY IF EXISTS "tarefas_os_select_policy" ON public.tarefas_os;
+DROP POLICY IF EXISTS "tarefas_os_insert_policy" ON public.tarefas_os;
+DROP POLICY IF EXISTS "tarefas_os_update_policy" ON public.tarefas_os;
+DROP POLICY IF EXISTS "tarefas_os_delete_policy" ON public.tarefas_os;
+
+CREATE POLICY "tarefas_os_select_policy" ON public.tarefas_os 
+FOR SELECT USING (
+    public.is_admin_or_gerencia() OR 
+    responsavel_id = public.current_user_id() OR 
+    public.current_user_id() = ANY(lideres_ids) OR 
+    public.current_user_id() = ANY(validadores_ids)
+);
+
+CREATE POLICY "tarefas_os_insert_policy" ON public.tarefas_os 
+FOR INSERT WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "tarefas_os_update_policy" ON public.tarefas_os 
+FOR UPDATE USING (
+    public.is_admin_or_gerencia() OR 
+    responsavel_id = public.current_user_id() OR 
+    public.current_user_id() = ANY(lideres_ids)
+)
+WITH CHECK (
+    public.is_admin_or_gerencia() OR 
+    (
+        (responsavel_id = public.current_user_id() OR public.current_user_id() = ANY(lideres_ids))
+        AND (prazo IS NOT DISTINCT FROM (SELECT t.prazo FROM public.tarefas_os t WHERE t.id = public.tarefas_os.id))
+    )
+);
+
+CREATE POLICY "tarefas_os_delete_policy" ON public.tarefas_os 
+FOR DELETE USING (public.is_admin_or_gerencia());
+
+-- 6. TABELA: METAS
+DROP POLICY IF EXISTS "Acesso total metas" ON public.metas;
+DROP POLICY IF EXISTS "metas_select_policy" ON public.metas;
+DROP POLICY IF EXISTS "metas_insert_policy" ON public.metas;
+DROP POLICY IF EXISTS "metas_update_policy" ON public.metas;
+DROP POLICY IF EXISTS "metas_delete_policy" ON public.metas;
+
+CREATE POLICY "metas_select_policy" ON public.metas 
+FOR SELECT USING (
+    public.is_admin_or_gerencia() OR 
+    lider_id = public.current_user_id() OR 
+    public.current_user_id() = ANY(lideres_ids)
+);
+
+CREATE POLICY "metas_insert_policy" ON public.metas 
+FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "metas_update_policy" ON public.metas 
+FOR UPDATE USING (
+    public.is_admin() OR 
+    lider_id = public.current_user_id() OR 
+    public.current_user_id() = ANY(lideres_ids)
+)
+WITH CHECK (
+    public.is_admin() OR 
+    (
+        (lider_id = public.current_user_id() OR public.current_user_id() = ANY(lideres_ids))
+        AND indicador = (SELECT m.indicador FROM public.metas m WHERE m.id = public.metas.id)
+        AND meta_valor = (SELECT m.meta_valor FROM public.metas m WHERE m.id = public.metas.id)
+    )
+);
+
+CREATE POLICY "metas_delete_policy" ON public.metas 
+FOR DELETE USING (public.is_admin());
+
+-- 7. TABELA: RELATORIOS
+DROP POLICY IF EXISTS "Acesso total relatorios" ON public.relatorios;
+DROP POLICY IF EXISTS "relatorios_select_policy" ON public.relatorios;
+DROP POLICY IF EXISTS "relatorios_insert_policy" ON public.relatorios;
+DROP POLICY IF EXISTS "relatorios_update_policy" ON public.relatorios;
+DROP POLICY IF EXISTS "relatorios_delete_policy" ON public.relatorios;
+
+CREATE POLICY "relatorios_select_policy" ON public.relatorios 
+FOR SELECT USING (
+    public.is_admin_or_gerencia() OR 
+    publico_tipo = 'TODOS' OR 
+    public.current_user_id() = ANY(lideres_alvo)
+);
+
+CREATE POLICY "relatorios_insert_policy" ON public.relatorios 
+FOR INSERT WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "relatorios_update_policy" ON public.relatorios 
+FOR UPDATE USING (
+    public.is_admin_or_gerencia() OR 
+    auth.role() = 'authenticated' OR 
+    public.current_user_id() IS NOT NULL
+);
+
+CREATE POLICY "relatorios_delete_policy" ON public.relatorios 
+FOR DELETE USING (public.is_admin_or_gerencia());
+
+-- 8. TABELA: CALENDARIO_EVENTOS
+DROP POLICY IF EXISTS "Acesso total calendario_eventos" ON public.calendario_eventos;
+DROP POLICY IF EXISTS "calendario_eventos_select_policy" ON public.calendario_eventos;
+DROP POLICY IF EXISTS "calendario_eventos_insert_policy" ON public.calendario_eventos;
+DROP POLICY IF EXISTS "calendario_eventos_update_policy" ON public.calendario_eventos;
+DROP POLICY IF EXISTS "calendario_eventos_delete_policy" ON public.calendario_eventos;
+
+CREATE POLICY "calendario_eventos_select_policy" ON public.calendario_eventos 
+FOR SELECT USING (
+    public.is_admin_or_gerencia() OR 
+    publico_tipo = 'TODOS' OR 
+    public.current_user_id() = ANY(lideres_alvo)
+);
+
+CREATE POLICY "calendario_eventos_insert_policy" ON public.calendario_eventos 
+FOR INSERT WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "calendario_eventos_update_policy" ON public.calendario_eventos 
+FOR UPDATE USING (public.is_admin_or_gerencia()) WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "calendario_eventos_delete_policy" ON public.calendario_eventos 
+FOR DELETE USING (public.is_admin_or_gerencia());
+
+-- 9. TABELA: COMENTARIOS
+-- REGRA ESTRITA: DELETE É BLOQUEADO PARA TODOS OS ROLES (INCLUSIVE ADMINISTRADOR)
+DROP POLICY IF EXISTS "Acesso total comentarios" ON public.comentarios;
+DROP POLICY IF EXISTS "comentarios_select_policy" ON public.comentarios;
+DROP POLICY IF EXISTS "comentarios_insert_policy" ON public.comentarios;
+DROP POLICY IF EXISTS "comentarios_update_policy" ON public.comentarios;
+DROP POLICY IF EXISTS "comentarios_delete_policy" ON public.comentarios;
+
+CREATE POLICY "comentarios_select_policy" ON public.comentarios 
+FOR SELECT USING (auth.role() = 'authenticated' OR public.current_user_id() IS NOT NULL);
+
+CREATE POLICY "comentarios_insert_policy" ON public.comentarios 
+FOR INSERT WITH CHECK (autor_id = public.current_user_id());
+
+-- Nenhuma política de UPDATE ou DELETE é criada, bloqueando edições e exclusões no nível do banco.
+
+-- 10. TABELA: NOTIFICACOES
+DROP POLICY IF EXISTS "Acesso total notificacoes" ON public.notificacoes;
+DROP POLICY IF EXISTS "notificacoes_select_policy" ON public.notificacoes;
+DROP POLICY IF EXISTS "notificacoes_insert_policy" ON public.notificacoes;
+DROP POLICY IF EXISTS "notificacoes_update_policy" ON public.notificacoes;
+DROP POLICY IF EXISTS "notificacoes_delete_policy" ON public.notificacoes;
+
+CREATE POLICY "notificacoes_select_policy" ON public.notificacoes 
+FOR SELECT USING (usuario_id = public.current_user_id());
+
+CREATE POLICY "notificacoes_update_policy" ON public.notificacoes 
+FOR UPDATE USING (usuario_id = public.current_user_id()) WITH CHECK (usuario_id = public.current_user_id());
+
+CREATE POLICY "notificacoes_insert_policy" ON public.notificacoes 
+FOR INSERT WITH CHECK (
+    public.is_admin_or_gerencia() OR 
+    auth.role() = 'service_role' OR 
+    usuario_id = public.current_user_id()
+);
+
+-- 11. TABELA: TIPOS_CALENDARIO
+DROP POLICY IF EXISTS "Acesso total tipos_calendario" ON public.tipos_calendario;
+DROP POLICY IF EXISTS "tipos_calendario_select_policy" ON public.tipos_calendario;
+DROP POLICY IF EXISTS "tipos_calendario_insert_policy" ON public.tipos_calendario;
+DROP POLICY IF EXISTS "tipos_calendario_update_policy" ON public.tipos_calendario;
+DROP POLICY IF EXISTS "tipos_calendario_delete_policy" ON public.tipos_calendario;
+
+CREATE POLICY "tipos_calendario_select_policy" ON public.tipos_calendario 
+FOR SELECT USING (auth.role() = 'authenticated' OR public.current_user_id() IS NOT NULL);
+
+CREATE POLICY "tipos_calendario_insert_policy" ON public.tipos_calendario 
+FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "tipos_calendario_update_policy" ON public.tipos_calendario 
+FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "tipos_calendario_delete_policy" ON public.tipos_calendario 
+FOR DELETE USING (public.is_admin());
+
+-- 12. TABELA: TIPOS_AUDITORIA
+DROP POLICY IF EXISTS "Acesso total tipos_auditoria" ON public.tipos_auditoria;
+DROP POLICY IF EXISTS "tipos_auditoria_select_policy" ON public.tipos_auditoria;
+DROP POLICY IF EXISTS "tipos_auditoria_insert_policy" ON public.tipos_auditoria;
+DROP POLICY IF EXISTS "tipos_auditoria_update_policy" ON public.tipos_auditoria;
+DROP POLICY IF EXISTS "tipos_auditoria_delete_policy" ON public.tipos_auditoria;
+
+CREATE POLICY "tipos_auditoria_select_policy" ON public.tipos_auditoria 
+FOR SELECT USING (auth.role() = 'authenticated' OR public.current_user_id() IS NOT NULL);
+
+CREATE POLICY "tipos_auditoria_insert_policy" ON public.tipos_auditoria 
+FOR INSERT WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "tipos_auditoria_update_policy" ON public.tipos_auditoria 
+FOR UPDATE USING (public.is_admin_or_gerencia()) WITH CHECK (public.is_admin_or_gerencia());
+
+CREATE POLICY "tipos_auditoria_delete_policy" ON public.tipos_auditoria 
+FOR DELETE USING (public.is_admin_or_gerencia());
 
 -- ==============================================================================
 -- VIEWS E CONSULTAS ANALÍTICAS PRINCIPAIS DO SISTEMA
 -- ==============================================================================
 
--- 1. VIEW: Ordens de Serviço (OS) Detalhadas com Categorias e Validações
 CREATE OR REPLACE VIEW public.vw_tarefas_os_detalhadas AS
 SELECT 
     os.id,
@@ -406,7 +667,6 @@ SELECT
 FROM public.tarefas_os os
 LEFT JOIN public.categorias c ON c.id = os.categoria_id;
 
--- 2. VIEW: Metas com Cálculo de Atingimento e Direção de Melhoria
 CREATE OR REPLACE VIEW public.vw_metas_progresso AS
 SELECT 
     m.id,
@@ -432,7 +692,6 @@ SELECT
     m.updated_at
 FROM public.metas m;
 
--- 3. VIEW: Líderes com Gestores Imediatos e Múltiplos Projetos
 CREATE OR REPLACE VIEW public.vw_lideres_gestao AS
 SELECT 
     l.id,
@@ -452,25 +711,4 @@ SELECT
     l.updated_at
 FROM public.lideres l
 LEFT JOIN public.usuarios u ON u.id = l.usuario_id;
-
--- 4. VIEW: Desempenho e Produtividade Operacional por Líder
-CREATE OR REPLACE VIEW public.vw_produtividade_lideres AS
-SELECT 
-    os.responsavel_nome AS lider_nome,
-    COUNT(*) AS total_os,
-    COUNT(*) FILTER (WHERE os.status = 'CONCLUIDA') AS concluidas,
-    COUNT(*) FILTER (WHERE os.status = 'AGUARDANDO_VALIDACAO') AS aguardando_validacao,
-    COUNT(*) FILTER (WHERE os.status = 'EM_ANDAMENTO') AS em_andamento,
-    COUNT(*) FILTER (WHERE os.status = 'ATRASADA') AS atrasadas,
-    COUNT(*) FILTER (WHERE os.status = 'BLOQUEADA') AS bloqueadas,
-    ROUND(AVG(os.tempo_execucao_minutos), 1) AS tempo_medio_minutos
-FROM public.tarefas_os os
-GROUP BY os.responsavel_nome;
-
--- ==============================================================================
--- STORAGE BUCKETS (SUPABASE STORAGE)
--- ==============================================================================
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('relatorios_pdf', 'relatorios_pdf', true), ('evidencias_os', 'evidencias_os', true)
-ON CONFLICT (id) DO NOTHING;
 `;

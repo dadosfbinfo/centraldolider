@@ -19,6 +19,17 @@ import {
   AprovacaoValidador,
   TipoAuditoriaConfig,
 } from '../types/database';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+export type ConnectionStatus = 'online' | 'offline' | 'syncing';
+
+export interface StoreSyncState {
+  status: ConnectionStatus;
+  isOnline: boolean;
+  lastSyncTime: string | null;
+  error: string | null;
+  isSimulatingOffline: boolean;
+}
 
 const STORAGE_KEYS = {
   USERS: 'cdl_usuarios_v1',
@@ -1325,9 +1336,175 @@ type Listener = () => void;
 
 class DatabaseStore {
   private listeners: Set<Listener> = new Set();
+  private connectionStatus: ConnectionStatus = isSupabaseConfigured ? 'syncing' : 'offline';
+  private lastSyncTime: string | null = null;
+  private connectionError: string | null = isSupabaseConfigured ? null : 'Supabase credentials not configured';
+  private isSimulatingOffline: boolean = false;
+  private isSyncing: boolean = false;
 
   constructor() {
     this.init();
+    if (isSupabaseConfigured) {
+      this.syncWithSupabase();
+    }
+  }
+
+  public getConnectionState(): StoreSyncState {
+    return {
+      status: this.connectionStatus,
+      isOnline: this.connectionStatus === 'online' && !this.isSimulatingOffline,
+      lastSyncTime: this.lastSyncTime,
+      error: this.connectionError,
+      isSimulatingOffline: this.isSimulatingOffline,
+    };
+  }
+
+  public isOffline(): boolean {
+    return this.connectionStatus === 'offline' || this.isSimulatingOffline;
+  }
+
+  public toggleSimulateOffline(simulate?: boolean) {
+    this.isSimulatingOffline = typeof simulate === 'boolean' ? simulate : !this.isSimulatingOffline;
+    if (this.isSimulatingOffline) {
+      this.connectionStatus = 'offline';
+      this.connectionError = 'Modo offline simulado manualmente para testes';
+    } else {
+      this.syncWithSupabase();
+    }
+    this.emitChange();
+  }
+
+  public assertOnline(actionName: string) {
+    if (this.isOffline()) {
+      throw new Error(
+        `Ação indisponível no momento (${actionName}). O banco de dados está inacessível ou operando em Modo Offline (somente leitura). Verifique a conexão e tente novamente.`
+      );
+    }
+  }
+
+  public async pushToSupabase(table: string, data: any, primaryKey: string = 'id', isDelete: boolean = false) {
+    if (this.isOffline() || !isSupabaseConfigured || !supabase) {
+      return;
+    }
+    try {
+      if (isDelete) {
+        const { error } = await supabase.from(table).delete().eq(primaryKey, data);
+        if (error) console.error(`[Supabase Delete] Erro em ${table}:`, error.message);
+      } else {
+        const { error } = await supabase.from(table).upsert(data, { onConflict: primaryKey });
+        if (error) console.error(`[Supabase Upsert] Erro em ${table}:`, error.message);
+      }
+    } catch (err: any) {
+      console.error(`[Supabase Sync Exception] ${table}:`, err?.message || err);
+    }
+  }
+
+  public async syncWithSupabase(): Promise<boolean> {
+    if (this.isSimulatingOffline) {
+      this.connectionStatus = 'offline';
+      this.connectionError = 'Modo offline simulado manualmente';
+      this.emitChange();
+      return false;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      this.connectionStatus = 'offline';
+      this.connectionError = 'Credenciais do Supabase não configuradas no ambiente';
+      this.emitChange();
+      return false;
+    }
+
+    if (this.isSyncing) return false;
+    this.isSyncing = true;
+    this.connectionStatus = 'syncing';
+    this.emitChange();
+
+    try {
+      const [
+        unitsRes,
+        catsRes,
+        usersRes,
+        leadersRes,
+        calTypesRes,
+        auditTypesRes,
+        tasksRes,
+        goalsRes,
+        reportsRes,
+        eventsRes,
+        commentsRes,
+        notifsRes,
+      ] = await Promise.all([
+        supabase.from('unidades').select('*'),
+        supabase.from('categorias').select('*'),
+        supabase.from('usuarios').select('*'),
+        supabase.from('lideres').select('*'),
+        supabase.from('tipos_calendario').select('*'),
+        supabase.from('tipos_auditoria').select('*'),
+        supabase.from('tarefas_os').select('*'),
+        supabase.from('metas').select('*'),
+        supabase.from('relatorios').select('*'),
+        supabase.from('calendario_eventos').select('*'),
+        supabase.from('comentarios').select('*'),
+        supabase.from('notificacoes').select('*'),
+      ]);
+
+      if (unitsRes.error || usersRes.error || tasksRes.error) {
+        const err = unitsRes.error || usersRes.error || tasksRes.error;
+        throw new Error(err?.message || 'Falha ao sincronizar dados com o Supabase');
+      }
+
+      // Update local storage cache with live database records
+      if (unitsRes.data && unitsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(unitsRes.data));
+      }
+      if (catsRes.data && catsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(catsRes.data));
+      }
+      if (usersRes.data && usersRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(usersRes.data));
+      }
+      if (leadersRes.data && leadersRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.LEADERS, JSON.stringify(leadersRes.data));
+      }
+      if (calTypesRes.data && calTypesRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.CALENDAR_TYPES, JSON.stringify(calTypesRes.data));
+      }
+      if (auditTypesRes.data && auditTypesRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.AUDIT_TYPES, JSON.stringify(auditTypesRes.data));
+      }
+      if (tasksRes.data && tasksRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksRes.data));
+      }
+      if (goalsRes.data && goalsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(goalsRes.data));
+      }
+      if (reportsRes.data && reportsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reportsRes.data));
+      }
+      if (eventsRes.data && eventsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(eventsRes.data));
+      }
+      if (commentsRes.data && commentsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(commentsRes.data));
+      }
+      if (notifsRes.data && notifsRes.data.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifsRes.data));
+      }
+
+      this.connectionStatus = 'online';
+      this.lastSyncTime = new Date().toISOString();
+      this.connectionError = null;
+      this.isSyncing = false;
+      this.emitChange();
+      return true;
+    } catch (err: any) {
+      console.warn('[Supabase Offline Fallback] Conexão com Supabase falhou, usando cache local:', err.message);
+      this.connectionStatus = 'offline';
+      this.connectionError = err.message || 'Falha ao sincronizar com o banco de dados';
+      this.isSyncing = false;
+      this.emitChange();
+      return false;
+    }
   }
 
   private init() {
@@ -3559,6 +3736,82 @@ class DatabaseStore {
   public clearSimulatedEmails(): void {
     localStorage.setItem(STORAGE_KEYS.SIMULATED_EMAILS, JSON.stringify([]));
     this.emitChange();
+  }
+
+  // --- DATA EXPORT & BACKUP RECOVERY UTILITIES ---
+  public exportFullBackupObject() {
+    const users = this.getUsers();
+    const leaders = this.getLeaders();
+    const units = this.getUnits();
+    const categories = this.getCategories();
+    const tasks = this.getTasks();
+    const goals = this.getGoals();
+    const reports = this.getReports();
+    const events = this.getEvents();
+    const calendarTypes = this.getCalendarTypes();
+    const auditTypes = this.getAuditTypes();
+    const comments = this.getComments();
+    const notifications = this.getAllNotificationsRaw();
+    const simulatedEmails = this.getSimulatedEmails();
+    let passwords: Record<string, string> = {};
+    try {
+      passwords = JSON.parse(localStorage.getItem(STORAGE_KEYS.PASSWORDS) || '{}');
+    } catch {
+      passwords = {};
+    }
+
+    return {
+      _metadata: {
+        sistema: 'Central do Líder',
+        versao: '2.0.0',
+        data_exportacao: new Date().toISOString(),
+        formato: 'JSON Estruturado - Backup Completo e Seguro',
+        origem: 'localStorage (Sessão Atual do Navegador)',
+        total_registros: {
+          usuarios: users.length,
+          lideres: leaders.length,
+          unidades_projetos: units.length,
+          categorias: categories.length,
+          tarefas_os: tasks.length,
+          metas: goals.length,
+          relatorios: reports.length,
+          calendario_eventos: events.length,
+          tipos_calendario: calendarTypes.length,
+          tipos_auditoria: auditTypes.length,
+          comentarios: comments.length,
+          notificacoes: notifications.length,
+          emails_simulados: simulatedEmails.length,
+        },
+      },
+      usuarios: users,
+      lideres: leaders,
+      unidades_projetos: units,
+      categorias: categories,
+      tarefas_os: tasks,
+      metas: goals,
+      relatorios: reports,
+      calendario_eventos: events,
+      tipos_calendario: calendarTypes,
+      tipos_auditoria: auditTypes,
+      comentarios: comments,
+      notificacoes: notifications,
+      emails_simulados: simulatedEmails,
+      senhas_acesso_preview: passwords,
+    };
+  }
+
+  public downloadBackupFile(): void {
+    const backupData = this.exportFullBackupObject();
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `central_do_lider_backup_completo_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
 

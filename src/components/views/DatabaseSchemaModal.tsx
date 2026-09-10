@@ -12,9 +12,14 @@ import {
   Layers,
   Sparkles,
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  Download,
+  AlertTriangle,
+  HardDriveDownload
 } from 'lucide-react';
 import { SUPABASE_SQL_SCHEMA, isSupabaseConfigured } from '../../lib/supabase';
+import { SUPABASE_SEED_SQL } from '../../lib/supabaseSeed';
+import { dbStore } from '../../services/dbStore';
 
 interface DatabaseSchemaModalProps {
   isOpen: boolean;
@@ -23,8 +28,18 @@ interface DatabaseSchemaModalProps {
 
 export const DatabaseSchemaModal: React.FC<DatabaseSchemaModalProps> = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [activeSection, setActiveSection] = useState<'tables' | 'queries' | 'sql' | 'rls'>('tables');
+  const [copiedSeed, setCopiedSeed] = useState(false);
+  const [activeSection, setActiveSection] = useState<'backup' | 'tables' | 'queries' | 'sql' | 'seed' | 'rls'>('backup');
   const [copiedQueryIndex, setCopiedQueryIndex] = useState<number | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleDownloadBackup = () => {
+    dbStore.downloadBackupFile();
+    setDownloadSuccess(true);
+    setTimeout(() => setDownloadSuccess(false), 3000);
+  };
 
   if (!isOpen) return null;
 
@@ -78,6 +93,16 @@ export const DatabaseSchemaModal: React.FC<DatabaseSchemaModalProps> = ({ isOpen
       name: 'public.notificacoes',
       desc: 'Notificações e avisos do sistema por usuário com controle de leitura.',
       columns: ['id (UUID PK)', 'usuario_id (UUID FK)', 'tipo', 'titulo', 'texto', 'lida (BOOLEAN)', 'item_tipo', 'item_id', 'link_acao', 'created_at'],
+    },
+    {
+      name: 'public.tipos_calendario',
+      desc: 'Tipos configuráveis de eventos e compromissos para o Calendário Operacional.',
+      columns: ['id (TEXT PK)', 'nome (VARCHAR)', 'cor (VARCHAR)', 'descricao (TEXT)', 'is_default (BOOLEAN)', 'created_at', 'updated_at'],
+    },
+    {
+      name: 'public.tipos_auditoria',
+      desc: 'Tipos configuráveis de auditoria técnica e operacional para Ordens de Serviço (OS).',
+      columns: ['id (TEXT PK)', 'nome (VARCHAR)', 'descricao (TEXT)', 'is_default (BOOLEAN)', 'created_at', 'updated_at'],
     },
   ];
 
@@ -198,6 +223,23 @@ FROM public.tarefas_os os
 GROUP BY os.responsavel_nome
 ORDER BY total_os DESC;`,
       fields: ['lider_nome', 'total_os', 'concluidas', 'aguardando_validacao', 'em_andamento', 'atrasadas', 'bloqueadas', 'media_minutos']
+    },
+    {
+      title: '6. Auditoria de Contagem de Linhas por Tabela (Sanity Check - 12 Tabelas)',
+      desc: 'Consulta para verificar a quantidade exata de registros em todas as 12 tabelas após a execução da carga de dados.',
+      sql: `SELECT 'unidades' AS tabela, COUNT(*) AS total FROM public.unidades
+UNION ALL SELECT 'categorias', COUNT(*) FROM public.categorias
+UNION ALL SELECT 'usuarios', COUNT(*) FROM public.usuarios
+UNION ALL SELECT 'lideres', COUNT(*) FROM public.lideres
+UNION ALL SELECT 'tipos_calendario', COUNT(*) FROM public.tipos_calendario
+UNION ALL SELECT 'tipos_auditoria', COUNT(*) FROM public.tipos_auditoria
+UNION ALL SELECT 'tarefas_os', COUNT(*) FROM public.tarefas_os
+UNION ALL SELECT 'metas', COUNT(*) FROM public.metas
+UNION ALL SELECT 'relatorios', COUNT(*) FROM public.relatorios
+UNION ALL SELECT 'calendario_eventos', COUNT(*) FROM public.calendario_eventos
+UNION ALL SELECT 'comentarios', COUNT(*) FROM public.comentarios
+UNION ALL SELECT 'notificacoes', COUNT(*) FROM public.notificacoes;`,
+      fields: ['tabela', 'total']
     }
   ];
 
@@ -226,11 +268,11 @@ ORDER BY total_os DESC;`,
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-bold">Estrutura de Banco de Dados (Supabase / PostgreSQL)</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-white">
-                  10 Tabelas + Consultas Otimizadas
+                  12 Tabelas + Carga Completa (67 Registros)
                 </span>
               </div>
               <p className="text-xs text-gray-300">
-                Fundação completa com DDL, consultas analíticas, integridade referencial e RLS
+                Fundação completa com DDL, integridade relacional, RLS e dados iniciais prontos
               </p>
             </div>
           </div>
@@ -246,6 +288,17 @@ ORDER BY total_os DESC;`,
         {/* Navigation Tabs */}
         <div className="px-6 border-b border-gray-200 flex flex-wrap items-center justify-between bg-gray-50 gap-2">
           <div className="flex flex-wrap items-center gap-2 py-2">
+            <button
+              onClick={() => setActiveSection('backup')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeSection === 'backup'
+                  ? 'bg-white text-[#C76B4A] shadow-xs border border-gray-200'
+                  : 'text-gray-600 hover:text-[#343A40]'
+              }`}
+            >
+              <HardDriveDownload className="w-4 h-4 text-[#C76B4A]" /> 💾 Backup & Exportação JSON
+            </button>
+
             <button
               onClick={() => setActiveSection('tables')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -276,7 +329,18 @@ ORDER BY total_os DESC;`,
                   : 'text-gray-600 hover:text-[#343A40]'
               }`}
             >
-              <FileCode className="w-4 h-4" /> Script SQL DDL Completo
+              <FileCode className="w-4 h-4" /> 1. Schema DDL
+            </button>
+
+            <button
+              onClick={() => setActiveSection('seed')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeSection === 'seed'
+                  ? 'bg-white text-[#C76B4A] shadow-xs border border-gray-200'
+                  : 'text-gray-600 hover:text-[#343A40]'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-emerald-600" /> 2. Carga de Dados (Seed SQL)
             </button>
 
             <button
@@ -291,24 +355,114 @@ ORDER BY total_os DESC;`,
             </button>
           </div>
 
-          <button
-            onClick={handleCopySql}
-            className="px-3 py-1.5 rounded-xl bg-[#C76B4A] hover:bg-[#b55d3d] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-white" /> Copiado!
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" /> Copiar SQL Supabase
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 py-1.5">
+            <button
+              onClick={handleDownloadBackup}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
+            >
+              {downloadSuccess ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-white" /> Backup Baixado!
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" /> Baixar Backup JSON
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleCopySql}
+              className="px-3 py-1.5 rounded-xl bg-[#C76B4A] hover:bg-[#b55d3d] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" /> DDL Copiado!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" /> Copiar Schema DDL
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
         <div className="flex-1 p-6 overflow-y-auto">
+          {activeSection === 'backup' && (
+            <div className="space-y-5">
+              <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-start gap-3.5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-amber-900">Origem Atual dos Dados e Diagnóstico Seguro</h4>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    A aplicação está operando com persistência em <strong>localStorage (navegador)</strong> sincronizada via <code>dbStore.ts</code>. Todas as entidades, tarefas, evidências enviadas, aprovações, metas e relatórios estão íntegros e preservados na sua sessão. O esquema no Supabase está vazio pois a aplicação ainda não gravou diretamente nele.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Usuários / Perfis</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getUsers().length} cadastros</div>
+                  <p className="text-[11px] text-gray-500">Admins, Gerência e Líderes com credenciais e papéis</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ordens de Serviço (OS)</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getTasks().length} ordens de serviço</div>
+                  <p className="text-[11px] text-gray-500">Inclui checklists, evidências, validações e bloqueios</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Metas Operacionais</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getGoals().length} metas cadastradas</div>
+                  <p className="text-[11px] text-gray-500">Metas diárias, semanais e mensais com valores realizados</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Relatórios Operacionais</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getReports().length} relatórios</div>
+                  <p className="text-[11px] text-gray-500">Contém texto markdown completo e confirmações de leitura</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Eventos de Calendário</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getEvents().length} compromissos</div>
+                  <p className="text-[11px] text-gray-500">Reuniões, treinamentos, comunicados e auditorias</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-gray-200 shadow-xs space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Comentários & Notificações</span>
+                  <div className="text-lg font-bold text-[#343A40]">{dbStore.getComments().length} comentários</div>
+                  <p className="text-[11px] text-gray-500">Histórico de comunicação entre gestores e líderes</p>
+                </div>
+              </div>
+
+              <div className="p-6 rounded-3xl bg-[#343A40] text-white flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-1 text-center sm:text-left">
+                  <h4 className="text-sm font-bold flex items-center justify-center sm:justify-start gap-2">
+                    <HardDriveDownload className="w-4 h-4 text-[#C76B4A]" /> Exportação Imediata para Arquivo JSON
+                  </h4>
+                  <p className="text-xs text-gray-300 max-w-xl">
+                    Clique no botão ao lado para salvar o snapshot completo de todos os dados do sistema em um arquivo <code>.json</code> no seu computador.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleDownloadBackup}
+                  className="px-5 py-3 rounded-2xl bg-[#C76B4A] hover:bg-[#b05838] text-white text-xs font-bold transition flex items-center gap-2 shadow-md shrink-0 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  {downloadSuccess ? 'Download Concluído!' : 'Baixar Arquivo de Backup (.json)'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeSection === 'tables' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {tablesList.map((tbl, i) => (
@@ -399,9 +553,47 @@ ORDER BY total_os DESC;`,
           )}
 
           {activeSection === 'sql' && (
-            <div className="relative">
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center justify-between">
+                <div>
+                  <p className="font-bold">ETAPA 1 — Schema DDL e Políticas RLS</p>
+                  <p className="text-gray-600">Cria as 10 tabelas, chaves primárias/estrangeiras, gatilhos de updated_at e segurança RLS por perfil.</p>
+                </div>
+                <button
+                  onClick={handleCopySql}
+                  className="px-3 py-1.5 rounded-xl bg-[#C76B4A] hover:bg-[#b55d3d] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'Copiado!' : 'Copiar DDL'}
+                </button>
+              </div>
               <pre className="p-5 rounded-2xl bg-[#1e2227] text-gray-200 font-mono text-xs overflow-x-auto leading-relaxed border border-gray-800">
                 {SUPABASE_SQL_SCHEMA}
+              </pre>
+            </div>
+          )}
+
+          {activeSection === 'seed' && (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
+                <div>
+                  <p className="font-bold">ETAPA 2 — Carga de Dados Inicial (Data Seeding)</p>
+                  <p className="text-gray-600">Insere todos os registros preservando IDs, relacionamentos e timestamps originais na ordem de integridade referencial.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(SUPABASE_SEED_SQL);
+                    setCopiedSeed(true);
+                    setTimeout(() => setCopiedSeed(false), 2500);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
+                >
+                  {copiedSeed ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedSeed ? 'Copiado!' : 'Copiar Seed SQL'}
+                </button>
+              </div>
+              <pre className="p-5 rounded-2xl bg-[#1e2227] text-emerald-300 font-mono text-xs overflow-x-auto leading-relaxed border border-gray-800">
+                {SUPABASE_SEED_SQL}
               </pre>
             </div>
           )}

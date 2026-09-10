@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { dbStore } from '../../services/dbStore';
 import { Notificacao, UsuarioPerfil } from '../../types/database';
+import { ConnectionStatusBadge } from './ConnectionStatusBanner';
 
 interface HeaderProps {
   onToggleMobileSidebar: () => void;
@@ -179,6 +180,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Supabase Connection Status Badge */}
+        <ConnectionStatusBadge />
         
         {/* Database Schema Button */}
         <button

@@ -15,6 +15,7 @@ import { CalendarView } from '../views/CalendarView';
 import { CalendarManagementView } from '../views/CalendarManagementView';
 import { UserProfileView } from '../views/UserProfileView';
 import { DatabaseSchemaModal } from '../views/DatabaseSchemaModal';
+import { ConnectionStatusBanner } from './ConnectionStatusBanner';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -93,6 +94,9 @@ export const AppLayout: React.FC = () => {
 
       {/* Main Content Area (offset by 64 / 256px on lg screens) */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Supabase Connection & Offline Fallback Banner */}
+        <ConnectionStatusBanner />
+
         {/* Top Header Bar */}
         <Header
           onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
